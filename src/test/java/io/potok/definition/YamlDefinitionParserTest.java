@@ -102,6 +102,104 @@ class YamlDefinitionParserTest {
     }
 
     @Test
+    void parsesNeedsAndComputesEffectiveDependencies() {
+        WorkflowDefinition d = parser.parse("""
+                name: diamond
+                trigger:
+                  webhook: { path: "d" }
+                steps:
+                  - { name: a, action: http }
+                  - { name: b, action: http, needs: [a] }
+                  - { name: c, action: http, needs: [a] }
+                  - { name: d, action: http, needs: [b, c] }
+                """);
+
+        assertThat(d.effectiveNeeds("a")).isEmpty();
+        assertThat(d.effectiveNeeds("d")).containsExactly("b", "c");
+        assertThat(d.rootSteps()).extracting(WorkflowDefinition.Step::name).containsExactly("a");
+        assertThat(d.needsClosure("d")).containsExactlyInAnyOrder("a", "b", "c");
+        assertThat(d.dependents("a")).extracting(WorkflowDefinition.Step::name).containsExactly("b", "c");
+    }
+
+    @Test
+    void linearWorkflowGetsImplicitNeeds() {
+        WorkflowDefinition d = parser.parse("""
+                name: linear
+                trigger:
+                  webhook: { path: "l" }
+                steps:
+                  - { name: a, action: http }
+                  - { name: b, action: http }
+                """);
+
+        assertThat(d.effectiveNeeds("b")).containsExactly("a");
+        assertThat(d.rootSteps()).extracting(WorkflowDefinition.Step::name).containsExactly("a");
+    }
+
+    @Test
+    void rejectsNeedsCycle() {
+        assertThatThrownBy(() -> parser.parse("""
+                name: cyclic
+                trigger:
+                  webhook: { path: "c" }
+                steps:
+                  - { name: a, action: http, needs: [c] }
+                  - { name: b, action: http, needs: [a] }
+                  - { name: c, action: http, needs: [b] }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("cycle");
+    }
+
+    @Test
+    void rejectsUnknownNeed() {
+        assertThatThrownBy(() -> parser.parse("""
+                name: x
+                trigger:
+                  webhook: { path: "x" }
+                steps:
+                  - { name: a, action: http, needs: [ghost] }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("ghost");
+    }
+
+    @Test
+    void rejectsTemplateRefToNonDependency() {
+        assertThatThrownBy(() -> parser.parse("""
+                name: x
+                trigger:
+                  webhook: { path: "x" }
+                steps:
+                  - { name: a, action: http }
+                  - { name: b, action: http, needs: [a] }
+                  - name: c
+                    action: telegram
+                    needs: [a]
+                    with: { chat_id: "1", text: "{{ steps.b.status }}" }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("steps.b");
+    }
+
+    @Test
+    void allowsTemplateRefToTransitiveDependency() {
+        WorkflowDefinition d = parser.parse("""
+                name: ok
+                trigger:
+                  webhook: { path: "ok" }
+                steps:
+                  - { name: a, action: http }
+                  - { name: b, action: http, needs: [a] }
+                  - name: c
+                    action: telegram
+                    needs: [b]
+                    with: { chat_id: "1", text: "{{ steps.a.status }}" }
+                """);
+        assertThat(d.step("c")).isNotNull();
+    }
+
+    @Test
     void parsesMaxAttempts() {
         WorkflowDefinition definition = parser.parse("""
                 name: retry

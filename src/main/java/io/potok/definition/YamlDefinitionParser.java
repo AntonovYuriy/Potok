@@ -177,7 +177,13 @@ public class YamlDefinitionParser {
                 throw new InvalidDefinitionException(
                         "'trigger.webhook.path' may only contain letters, digits, '-' and '_'");
             }
-            return new WorkflowDefinition.Trigger(null, new WorkflowDefinition.Webhook(path), null, null);
+            String hmacSecretEnv = stringField(webhookMap, "hmac_secret_env");
+            if (hmacSecretEnv != null && !hmacSecretEnv.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+                throw new InvalidDefinitionException(
+                        "'trigger.webhook.hmac_secret_env' must be an environment variable NAME");
+            }
+            return new WorkflowDefinition.Trigger(null,
+                    new WorkflowDefinition.Webhook(path, hmacSecretEnv), null, null);
         }
         if (poll != null) {
             return new WorkflowDefinition.Trigger(null, null, parsePoll(poll), null);
@@ -202,7 +208,24 @@ public class YamlDefinitionParser {
             throw new InvalidDefinitionException(
                     "'trigger.poll.fire_when' is required: \"changed\" or a condition expression");
         }
-        return new WorkflowDefinition.Poll(interval, (Map<String, Object>) http, fireWhen.trim());
+        return new WorkflowDefinition.Poll(interval, (Map<String, Object>) http, fireWhen.trim(),
+                parseExtract(map.get("extract")));
+    }
+
+    private WorkflowDefinition.Extract parseExtract(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new InvalidDefinitionException("'trigger.poll.extract' must be a mapping");
+        }
+        String jsonpath = stringField(map, "jsonpath");
+        String css = stringField(map, "css");
+        if ((jsonpath == null) == (css == null)) {
+            throw new InvalidDefinitionException(
+                    "'trigger.poll.extract' must define exactly one of 'jsonpath' or 'css'");
+        }
+        return new WorkflowDefinition.Extract(jsonpath, css);
     }
 
     private WorkflowDefinition.Rss parseRss(Object raw) {

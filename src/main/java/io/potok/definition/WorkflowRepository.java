@@ -43,7 +43,7 @@ public class WorkflowRepository {
         return jdbc.sql("""
                         update workflow
                         set name = :name, yaml_source = :yaml, definition = :definition::jsonb,
-                            enabled = true, updated_at = now()
+                            enabled = true, current_version = current_version + 1, updated_at = now()
                         where id = :id
                         returning *
                         """)
@@ -121,6 +121,7 @@ public class WorkflowRepository {
                 rs.getBoolean("enabled"),
                 rs.getString("yaml_source"),
                 fromJson(rs.getString("definition")),
+                rs.getInt("current_version"),
                 rs.getObject("created_at", OffsetDateTime.class),
                 rs.getObject("updated_at", OffsetDateTime.class));
     }

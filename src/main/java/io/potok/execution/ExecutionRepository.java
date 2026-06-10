@@ -18,24 +18,34 @@ public class ExecutionRepository {
 
     private final JdbcClient jdbc;
     private final Json json;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final RowMapper<WorkflowExecution> rowMapper;
 
-    public ExecutionRepository(JdbcClient jdbc, Json json) {
+    public ExecutionRepository(JdbcClient jdbc, Json json,
+                               com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.json = json;
+        this.objectMapper = objectMapper;
         this.rowMapper = this::mapRow;
     }
 
-    public WorkflowExecution insert(UUID workflowId, Map<String, Object> triggerInfo) {
-        return jdbc.sql("""
-                        insert into workflow_execution (workflow_id, trigger_info)
-                        values (:workflowId, :triggerInfo::jsonb)
-                        returning *
-                        """)
-                .param("workflowId", workflowId)
-                .param("triggerInfo", json.write(triggerInfo))
-                .query(rowMapper)
-                .single();
+    public WorkflowExecution insert(UUID workflowId, Map<String, Object> triggerInfo,
+                                    int versionNo, io.potok.definition.WorkflowDefinition definition) {
+        try {
+            return jdbc.sql("""
+                            insert into workflow_execution (workflow_id, trigger_info, version_no, definition)
+                            values (:workflowId, :triggerInfo::jsonb, :versionNo, :definition::jsonb)
+                            returning *
+                            """)
+                    .param("workflowId", workflowId)
+                    .param("triggerInfo", json.write(triggerInfo))
+                    .param("versionNo", versionNo)
+                    .param("definition", objectMapper.writeValueAsString(definition))
+                    .query(rowMapper)
+                    .single();
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("failed to snapshot definition", e);
+        }
     }
 
     public Optional<WorkflowExecution> findById(UUID id) {
@@ -84,11 +94,22 @@ public class ExecutionRepository {
     }
 
     private WorkflowExecution mapRow(ResultSet rs, int rowNum) throws SQLException {
+        String definitionJson = rs.getString("definition");
+        io.potok.definition.WorkflowDefinition definition = null;
+        if (definitionJson != null) {
+            try {
+                definition = objectMapper.readValue(definitionJson, io.potok.definition.WorkflowDefinition.class);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new IllegalStateException("failed to read definition snapshot", e);
+            }
+        }
         return new WorkflowExecution(
                 rs.getObject("id", UUID.class),
                 rs.getObject("workflow_id", UUID.class),
                 ExecutionStatus.valueOf(rs.getString("status")),
                 json.readMap(rs.getString("trigger_info")),
+                rs.getObject("version_no", Integer.class),
+                definition,
                 rs.getObject("started_at", OffsetDateTime.class),
                 rs.getObject("finished_at", OffsetDateTime.class),
                 rs.getObject("created_at", OffsetDateTime.class));

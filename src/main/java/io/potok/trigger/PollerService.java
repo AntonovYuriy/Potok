@@ -49,17 +49,25 @@ public class PollerService {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
+    private final TriggerLocks locks;
+
     public PollerService(HttpActionHandler http, PollStateRepository state,
-                         ExecutionService executions, TemplateResolver templates, Json json) {
+                         ExecutionService executions, TemplateResolver templates, Json json,
+                         TriggerLocks locks) {
         this.http = http;
         this.state = state;
         this.executions = executions;
         this.templates = templates;
         this.json = json;
+        this.locks = locks;
     }
 
     @Transactional
     public void pollHttp(Workflow workflow) {
+        if (!locks.tryAdvisoryLock(workflow.id())) {
+            log.info("poll_skipped_lock workflow={}", workflow.name());
+            return; // another replica is polling this workflow right now
+        }
         WorkflowDefinition.Poll poll = workflow.definition().trigger().poll();
         Map<String, Object> with = new HashMap<>(poll.http());
         with.put("fail_on_status", false); // any response is data for the poller
@@ -71,30 +79,57 @@ public class PollerService {
         }
 
         Map<String, Object> response = result.output();
-        String newHash = sha256(json.write(response.get("body")));
+        Object body = response.get("body");
+
+        // with extract: noise in the rest of the body (timestamps, ads) is invisible
+        Map<String, Object> context = new LinkedHashMap<>(response);
+        Object extracted = null;
+        String hashBasis;
+        if (poll.extract() != null) {
+            extracted = PollExtractor.extract(poll.extract(), body,
+                    body instanceof String s ? s : null);
+            context.put("value", extracted);
+            hashBasis = json.write(extracted);
+        } else {
+            hashBasis = json.write(body);
+        }
+        Map<String, Object> pollView = new LinkedHashMap<>();
+        pollView.put("value", extracted);
+        pollView.put("body", body);
+        context.put("poll", pollView);
+
+        String newHash = sha256(hashBasis);
         PollStateRepository.PollState previous = state.find(workflow.id()).orElse(null);
 
         PollEvaluator.Decision decision;
         if ("changed".equals(poll.fireWhen())) {
             decision = PollEvaluator.changed(previous == null ? null : previous.lastHash(), newHash);
         } else {
-            boolean value = templates.evaluateCondition(poll.fireWhen(), response);
+            boolean value = templates.evaluateCondition(poll.fireWhen(), context);
             decision = PollEvaluator.expression(
                     previous == null ? null : previous.lastCondition(), value, newHash);
         }
 
         state.upsert(workflow.id(), decision.newHash(), decision.newCondition());
         if (decision.fire()) {
+            Map<String, Object> payload = new LinkedHashMap<>(response);
+            if (poll.extract() != null) {
+                payload.put("value", extracted);
+            }
             executions.start(workflow, Map.of(
                     "type", "poll",
                     "fire_when", poll.fireWhen(),
-                    "payload", response));
+                    "payload", payload));
             log.info("poll_fired workflow={} fireWhen={}", workflow.name(), poll.fireWhen());
         }
     }
 
     @Transactional
     public void pollRss(Workflow workflow) {
+        if (!locks.tryAdvisoryLock(workflow.id())) {
+            log.info("poll_skipped_lock workflow={}", workflow.name());
+            return; // another replica is polling this workflow right now
+        }
         WorkflowDefinition.Rss rss = workflow.definition().trigger().rss();
         SyndFeed feed;
         try {

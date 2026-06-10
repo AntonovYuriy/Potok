@@ -30,7 +30,9 @@ public class ExecutionService {
      */
     @Transactional
     public WorkflowExecution start(Workflow workflow, Map<String, Object> triggerInfo) {
-        WorkflowExecution execution = executions.insert(workflow.id(), triggerInfo);
+        // snapshot version + definition: a PUT mid-run never changes what this execution does
+        WorkflowExecution execution = executions.insert(
+                workflow.id(), triggerInfo, workflow.currentVersion(), workflow.definition());
         // DAG: every dependency-free step starts immediately (linear flows have one root)
         for (var root : workflow.definition().rootSteps()) {
             jobQueue.enqueue(execution.id(), root.name(), Instant.now());

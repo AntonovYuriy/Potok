@@ -58,6 +58,18 @@ curl -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
      https://<your-app>.koyeb.app/api/workflows
 ```
 
+## Tokens & webhook signatures
+
+- After first boot, create per-client API tokens instead of sharing the root
+  key: dashboard → Tokens (or `POST /api/tokens {"name": "ci"}` with the root
+  key). The plaintext is shown once; revoke leaked tokens immediately —
+  `POTOK_API_KEY` stays your bootstrap/admin credential (only it can call
+  `POST /api/admin/purge`).
+- For public webhooks add `hmac_secret_env: "MY_HOOK_SECRET"` to the trigger
+  and set `MY_HOOK_SECRET` as a Koyeb Secret env var. GitHub webhooks: same
+  secret in the webhook settings, GitHub signs with X-Hub-Signature-256
+  automatically. Unsigned/invalid deliveries get 401.
+
 ## Honest notes (free-tier caveats)
 
 - **RAM**: 512 MB works (`-XX:MaxRAMPercentage=75` caps the heap at ~384 MB;

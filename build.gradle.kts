@@ -23,6 +23,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("com.rometools:rome:2.1.0")
+    implementation("com.jayway.jsonpath:json-path:2.9.0")
+    implementation("org.jsoup:jsoup:1.22.2")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
     implementation("org.flywaydb:flyway-core")
@@ -43,6 +45,8 @@ tasks.withType<Test> {
     // Path of the docker socket as seen by the docker daemon's host (VM for colima/Docker Desktop,
     // the machine itself on Linux) — lets Ryuk mount it when DOCKER_HOST points to a user socket.
     environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
+    // webhook-signature integration test reads the secret from a real env var
+    environment("TEST_HOOK_SECRET", "integration-test-hook-secret")
     testLogging {
         events("passed", "skipped", "failed")
     }

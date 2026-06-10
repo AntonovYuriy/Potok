@@ -17,21 +17,26 @@ import java.util.UUID;
 public class WorkflowService {
 
     private final WorkflowRepository workflows;
+    private final io.potok.definition.WorkflowVersionRepository versions;
     private final YamlDefinitionParser parser;
     private final ApplicationEventPublisher events;
 
     public WorkflowService(WorkflowRepository workflows,
+                           io.potok.definition.WorkflowVersionRepository versions,
                            YamlDefinitionParser parser,
                            ApplicationEventPublisher events) {
         this.workflows = workflows;
+        this.versions = versions;
         this.parser = parser;
         this.events = events;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Workflow create(String yamlSource) {
         WorkflowDefinition definition = parser.parse(yamlSource);
         try {
             Workflow workflow = workflows.insert(definition.name(), yamlSource, definition);
+            versions.insert(workflow.id(), 1, yamlSource, definition, null);
             events.publishEvent(new WorkflowsChangedEvent());
             return workflow;
         } catch (DuplicateKeyException e) {
@@ -39,15 +44,31 @@ public class WorkflowService {
         }
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Optional<Workflow> update(UUID id, String yamlSource) {
+        return updateWithComment(id, yamlSource, null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public Optional<Workflow> updateWithComment(UUID id, String yamlSource, String comment) {
         WorkflowDefinition definition = parser.parse(yamlSource);
         try {
             Optional<Workflow> updated = workflows.update(id, definition.name(), yamlSource, definition);
-            updated.ifPresent(w -> events.publishEvent(new WorkflowsChangedEvent()));
+            updated.ifPresent(w -> {
+                versions.insert(w.id(), w.currentVersion(), yamlSource, definition, comment);
+                events.publishEvent(new WorkflowsChangedEvent());
+            });
             return updated;
         } catch (DuplicateKeyException e) {
             throw new WorkflowConflictException("workflow named '" + definition.name() + "' already exists");
         }
+    }
+
+    /** Rollback = a NEW version with the old content; history is append-only. */
+    @org.springframework.transaction.annotation.Transactional
+    public Optional<Workflow> rollback(UUID id, int versionNo) {
+        return versions.find(id, versionNo)
+                .flatMap(v -> updateWithComment(id, v.yamlSource(), "rollback to v" + versionNo));
     }
 
     /** Soft delete: enabled=false keeps execution history intact. */
@@ -72,6 +93,14 @@ public class WorkflowService {
 
     public Optional<Workflow> findById(UUID id) {
         return workflows.findById(id);
+    }
+
+    public List<io.potok.definition.WorkflowVersion> versions(UUID id, int page, int size) {
+        return versions.page(id, page, size);
+    }
+
+    public long versionCount(UUID id) {
+        return versions.count(id);
     }
 
     public List<Workflow> findAll() {

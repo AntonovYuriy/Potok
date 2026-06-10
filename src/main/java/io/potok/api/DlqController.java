@@ -51,10 +51,15 @@ public class DlqController {
     @PostMapping("/{id}/requeue")
     public ResponseEntity<Map<String, Object>> requeue(@PathVariable long id) {
         DeadLetter deadLetter = deadLetters.findById(id).orElseThrow(() -> notFound(id));
-        // un-skip what was poisoned by this step's failure so the DAG can finish
+        // un-skip what was poisoned by this step's failure so the DAG can finish;
+        // prefer the execution's definition snapshot, fall back to the live workflow
         java.util.Set<String> downstream = executions.findById(deadLetter.executionId())
-                .flatMap(execution -> workflows.findById(execution.workflowId()))
-                .map(workflow -> workflow.definition().downstreamClosure(deadLetter.stepName()))
+                .map(execution -> execution.definition() != null
+                        ? execution.definition()
+                        : workflows.findById(execution.workflowId())
+                                .map(io.potok.definition.Workflow::definition).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .map(definition -> definition.downstreamClosure(deadLetter.stepName()))
                 .orElse(java.util.Set.of());
         deadLetters.requeue(deadLetter, downstream);
         return ResponseEntity.accepted().body(Map.of(

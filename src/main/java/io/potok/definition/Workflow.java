@@ -10,6 +10,7 @@ public record Workflow(
         boolean enabled,
         String yamlSource,
         WorkflowDefinition definition,
+        int currentVersion,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {
 }

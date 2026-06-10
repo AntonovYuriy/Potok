@@ -1,7 +1,8 @@
-# Watch a page/API every 5 minutes; when the response changes — Telegram ping.
-# fire_when: "changed" fires on body-hash change (first poll only records the
-# baseline). For threshold alerts use an expression instead, e.g.
-#   fire_when: "{{ body.price < 100 }}"   # fires on the false -> true transition
+# Watch a product price every 5 minutes; ping Telegram when it drops below 100.
+# extract pulls ONE value out of the response, so noisy fields (timestamps,
+# stock counters) don't cause false fires. For HTML pages use a css selector:
+#   extract: { css: "span.price" }
+# For "fire on any change of the extracted value" use fire_when: "changed".
 name: coin-watcher
 trigger:
   poll:
@@ -9,10 +10,12 @@ trigger:
     http:
       method: GET
       url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-    fire_when: "changed"
+    extract:
+      jsonpath: "$.bitcoin.usd"
+    fire_when: "{{ poll.value < 100000 }}"
 steps:
   - name: notify
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "👀 Цена изменилась: {{ trigger.body }}"
+      text: "💰 Цена пробила порог: {{ trigger.value }}"

@@ -38,7 +38,17 @@ public record WorkflowDefinition(
     public record Poll(
             Duration interval,
             Map<String, Object> http,
-            @JsonProperty("fire_when") String fireWhen) {
+            @JsonProperty("fire_when") String fireWhen,
+            Extract extract) {
+    }
+
+    /**
+     * Optional value extraction before compare/evaluate: jsonpath for JSON
+     * responses, css selector (first match, text) for HTML. changed-mode then
+     * hashes only the extracted value; expressions see it as {@code poll.value}.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Extract(String jsonpath, String css) {
     }
 
     /** RSS/Atom poller: one execution per new feed item, deduped by guid/link. */

@@ -23,6 +23,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("com.rometools:rome:2.1.0")
+    implementation("com.jayway.jsonpath:json-path:2.9.0")
+    implementation("org.jsoup:jsoup:1.22.2")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
     implementation("org.flywaydb:flyway-core")

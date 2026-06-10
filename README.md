@@ -91,6 +91,10 @@ A `with:` value that is exactly one `{{ … }}` keeps its original type
 
 `http` → `{status, headers, body}` (body parsed as JSON when possible).
 `telegram` → `{status, chat_id}`.
+`warsaw_waste` → `{tomorrow_date, tomorrow, tomorrow_count, summary, upcoming}` —
+Warsaw (warszawa19115.pl) waste collection schedule for an `address_point_id`;
+see [examples/garbage-reminder.yaml](examples/garbage-reminder.yaml) and the
+handler source for a template of writing your own action.
 
 ## Execution semantics
 

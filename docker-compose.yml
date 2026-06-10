@@ -10,6 +10,11 @@ services:
       # Optional: telegram action fails its step with a clear error when unset
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # Tuning knobs (see README "Configuration")
+      POTOK_SHUTDOWN_GRACE: ${POTOK_SHUTDOWN_GRACE:-PT20S}
+      POTOK_QUEUE_LOCK_TIMEOUT: ${POTOK_QUEUE_LOCK_TIMEOUT:-PT60S}
+      POTOK_LOG_JSON: ${POTOK_LOG_JSON:-false}
+      POTOK_DLQ_TELEGRAM: ${POTOK_DLQ_TELEGRAM:-false}
     depends_on:
       postgres:
         condition: service_healthy

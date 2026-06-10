@@ -1,9 +1,17 @@
 # Handoff
 
-_Last updated: 2026-06-10 (M3 done)._
+_Last updated: 2026-06-10 (M4 done)._
 
 ## Current state
 
+- **M4 done — UI editing, versioning, channel security, pollers v2, polish** (2026-06-10, PR #5, squash `d6cdb67`, 117 tests):
+  - Dashboard YAML editor (#/new, edit): line-number gutter, tab handling, inline 400s; no libs/build step.
+  - Versioning: append-only `workflow_version` (V6, backfilled), `current_version` pointer, GET versions + rollback (= new version); executions pin version_no AND snapshot the parsed definition — mid-run edits are inert. UI version list + rollback.
+  - Security: webhook `hmac_secret_env` → X-Hub-Signature-256 over raw body (constant-time, fail-closed, secret env-only); api_token table (SHA-256 only, show-once, revoke), filter takes root key or active token; `/api/admin/purge` root-only. UI tokens page.
+  - Pollers v2: `extract {jsonpath|css}` (jayway/jsoup) — changed-mode hashes the extracted value only, expressions get `poll.value`; conditions support `&&`/`||`/parens (recursive evaluator, grammar in README).
+  - Ops: on-demand purge endpoint; replica-safe firing (advisory xact lock for pollers, (workflow, minute) claim for cron, claims purged nightly); UI flash banners for op errors.
+  - Portfolio: README rebuilt (badges, mermaid, demo.gif, Design decisions), MIT LICENSE, CONTRIBUTING, issue templates, repo description/topics set.
+  - Live-verified: editor create → cycle 400 inline → rollback chain v1→v3; tokens create/use/revoke; signed webhook via curl+openssl (401/401/202); extract immune to per-request noise (0 fires) then exactly 1 on threshold cross; UI captured headless → docs/demo.gif.
 - **M3 done — auth, DAG, pollers, dashboard, hygiene** (2026-06-10, PR #4, squash `78803a7`, 94 tests):
   - Auth: `POTOK_API_KEY` → `X-API-Key` on `/api/**` (401 problem+json); unset = off; `/api/meta` (public) reports `authRequired`.
   - DAG: `needs:` per step (default = previous step, linear YAMLs unchanged); parallel ready steps; create-time validation (cycles, unknown needs, template refs limited to needs-closure); failure → downstream SKIPPED(`dependency failed: X`), independent branches finish, execution FAILED when graph terminal; condition-SKIPPED satisfies dependents; DLQ requeue un-skips downstream. Join dedupe: unique job_queue(execution_id, step_name) + ON CONFLICT.
@@ -44,10 +52,11 @@ _Last updated: 2026-06-10 (M3 done)._
 
 ## Known issues / gaps
 
-- Cron AND poll/rss triggers fire on every instance when scaled out — single instance until leader election (M4+).
-- Dashboard: no YAML editing (M4); workflow list does N+1 last-run fetches (fine for small N).
-- Poll "changed" mode hashes the whole body — a timestamp field in the response = fire every poll; expression mode is the workaround.
-- `if:` supports one comparison — no `&&`/`||` yet.
+- Dashboard list still does N+1 last-run fetches (fine for small N); no SSE — views poll every 7s.
+- Tokens have no scopes — any active token = full API (except root-only admin); no users/RBAC.
+- Conditions: no `!` negation, no arithmetic; `contains` is case-sensitive.
+- UI editor is a plain textarea — no YAML syntax highlighting (deliberate: no build step).
+- cron_fire claims assume minute granularity — a 6-field cron with seconds would dedupe to 1 fire/min across replicas (single instance unaffected).
 
 ## Verified 2026-06-10 (M1)
 
@@ -65,16 +74,16 @@ _Last updated: 2026-06-10 (M3 done)._
 
 ## Next action
 
-**First deploy to Koyeb + Neon per docs/deploy.md — manual, by owner** (accounts, secrets, clicking). Set `POTOK_API_KEY` — the instance gets a public URL.
+**First deploy to Koyeb + Neon per docs/deploy.md — manual, by owner** (accounts, secrets, clicking). Set `POTOK_API_KEY`; create per-client tokens after boot; use `hmac_secret_env` for public webhooks.
 
-## M4 candidates
+## M5 ideas
 
-1. YAML editor in the dashboard (create/update with validation feedback).
-2. Auth users/tokens: multiple API keys, scopes, token rotation; webhook signatures (HMAC).
-3. Workflow versioning (PUT history, rollback).
-4. Leader election for cron/pollers (multi-instance).
-5. `&&`/`||` in conditions; per-step timeouts.
-6. Autodeploy notes: Koyeb redeploy hook from GHCR `:latest` on merge (CI step), zero-downtime via readiness.
+1. Multi-user / RBAC: token scopes (read-only, per-workflow), audit log.
+2. Workflow templates / marketplace: shareable YAML snippets, import from URL.
+3. SSE live updates in the dashboard (replace 7s polling), execution tail view.
+4. Oracle Cloud / own-VM migration guide (always-free ARM box fits this stack; systemd unit + caddy).
+5. Per-step timeouts, `!` negation in conditions, case-insensitive contains.
+6. Autodeploy: Koyeb redeploy hook from CI on GHCR push (zero-downtime via readiness probe).
 
 ## How to use this file
 

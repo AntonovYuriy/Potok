@@ -25,7 +25,6 @@ dependencies {
     implementation("com.rometools:rome:2.1.0")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
-    implementation("org.codehaus.janino:janino")
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")

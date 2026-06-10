@@ -1,3 +1,7 @@
+logging:
+  # logback-json-true.xml = structured JSON (logstash encoder), -false = plain text
+  config: classpath:logback-json-${POTOK_LOG_JSON:false}.xml
+
 spring:
   application:
     name: potok
@@ -52,5 +56,5 @@ potok:
   dlq:
     telegram-notify: ${POTOK_DLQ_TELEGRAM:false}
     notify-interval: ${POTOK_DLQ_NOTIFY_INTERVAL:PT1M}
-  log:
-    json: ${POTOK_LOG_JSON:false}
+  retention:
+    days: ${POTOK_RETENTION_DAYS:30}

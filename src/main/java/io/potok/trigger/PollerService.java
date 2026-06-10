@@ -156,6 +156,6 @@ public class PollerService {
     }
 
     private static String describe(Exception e) {
-        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        return io.potok.common.Errors.describe(e);
     }
 }

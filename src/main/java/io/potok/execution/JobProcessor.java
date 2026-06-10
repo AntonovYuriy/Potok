@@ -308,7 +308,7 @@ public class JobProcessor {
             StepResult result = handler.execute(ctx);
             return result != null ? result : StepResult.fail("action returned no result");
         } catch (Exception e) {
-            return StepResult.fail(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            return StepResult.fail(io.potok.common.Errors.describe(e));
         }
     }
 }

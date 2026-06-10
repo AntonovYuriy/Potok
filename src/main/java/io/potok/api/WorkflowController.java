@@ -33,7 +33,9 @@ public class WorkflowController {
         this.executionService = executionService;
     }
 
-    @PostMapping(consumes = {MediaType.TEXT_PLAIN_VALUE, "application/yaml", "application/x-yaml", MediaType.ALL_VALUE})
+    // No ALL_VALUE here: curl's default form-urlencoded would arrive mangled
+    // (the container consumes the stream as parameters); a 415 is clearer.
+    @PostMapping(consumes = {MediaType.TEXT_PLAIN_VALUE, "application/yaml", "application/x-yaml", "text/yaml"})
     public ResponseEntity<WorkflowResponse> create(@RequestBody String yamlSource) {
         Workflow workflow = workflowService.create(yamlSource);
         return ResponseEntity.status(HttpStatus.CREATED).body(WorkflowResponse.from(workflow));
@@ -51,7 +53,7 @@ public class WorkflowController {
                 .orElseThrow(() -> notFound(id));
     }
 
-    @PutMapping(value = "/{id}", consumes = {MediaType.TEXT_PLAIN_VALUE, "application/yaml", "application/x-yaml", MediaType.ALL_VALUE})
+    @PutMapping(value = "/{id}", consumes = {MediaType.TEXT_PLAIN_VALUE, "application/yaml", "application/x-yaml", "text/yaml"})
     public WorkflowResponse update(@PathVariable UUID id, @RequestBody String yamlSource) {
         return workflowService.update(id, yamlSource)
                 .map(WorkflowResponse::from)

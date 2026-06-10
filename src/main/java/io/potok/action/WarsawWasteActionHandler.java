@@ -110,8 +110,7 @@ public class WarsawWasteActionHandler implements ActionHandler {
             Thread.currentThread().interrupt();
             return StepResult.fail("warsaw_waste request interrupted");
         } catch (Exception e) {
-            return StepResult.fail("warsaw_waste request failed: "
-                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+            return StepResult.fail("warsaw_waste request failed: " + io.potok.common.Errors.describe(e));
         }
 
         JsonNode root;

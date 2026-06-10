@@ -19,11 +19,13 @@ public class DeadLetterRepository {
 
     private final JdbcClient jdbc;
     private final Json json;
+    private final StepExecutionRepository stepExecutions;
     private final RowMapper<DeadLetter> rowMapper;
 
-    public DeadLetterRepository(JdbcClient jdbc, Json json) {
+    public DeadLetterRepository(JdbcClient jdbc, Json json, StepExecutionRepository stepExecutions) {
         this.jdbc = jdbc;
         this.json = json;
+        this.stepExecutions = stepExecutions;
         this.rowMapper = this::mapRow;
     }
 
@@ -69,9 +71,12 @@ public class DeadLetterRepository {
     /**
      * Puts a dead job back on the queue: fresh job row (attempts reset), execution
      * and step reopened so the worker pipeline picks them up normally.
+     * Dependency-skipped steps downstream of the revived one are forgotten so the
+     * DAG can run them after the retry succeeds.
      */
     @Transactional
-    public boolean requeue(DeadLetter deadLetter) {
+    public boolean requeue(DeadLetter deadLetter, java.util.Collection<String> downstreamSteps) {
+        stepExecutions.resetDependencySkipped(deadLetter.executionId(), downstreamSteps);
         jdbc.sql("""
                         insert into job_queue (execution_id, step_name, run_at)
                         values (:executionId, :stepName, now())

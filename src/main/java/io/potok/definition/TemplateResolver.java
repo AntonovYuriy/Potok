@@ -64,25 +64,66 @@ public class TemplateResolver {
         return resolved == null ? "" : String.valueOf(resolved);
     }
 
+    private static final String[] OPERATORS = {"==", "!=", ">=", "<=", ">", "<"};
+
     public boolean evaluateCondition(String expression, Map<String, Object> context) {
         String expr = expression.trim();
         Matcher wrapped = SINGLE_EXPRESSION.matcher(expr);
         if (wrapped.matches()) {
             expr = wrapped.group(1).trim();
         }
-        int neq = indexOfOperator(expr, "!=");
-        int eq = indexOfOperator(expr, "==");
-        if (neq >= 0) {
-            return !valuesEqual(
-                    operand(expr.substring(0, neq), context),
-                    operand(expr.substring(neq + 2), context));
+        if (expr.startsWith("contains(") && expr.endsWith(")")) {
+            return evaluateContains(expr.substring("contains(".length(), expr.length() - 1), context);
         }
-        if (eq >= 0) {
-            return valuesEqual(
-                    operand(expr.substring(0, eq), context),
-                    operand(expr.substring(eq + 2), context));
+        if (expr.startsWith("exists(") && expr.endsWith(")")) {
+            return lookup(expr.substring("exists(".length(), expr.length() - 1).trim(), context) != null;
+        }
+        for (String op : OPERATORS) {
+            int at = indexOfOperator(expr, op);
+            if (at >= 0) {
+                Object left = operand(expr.substring(0, at), context);
+                Object right = operand(expr.substring(at + op.length()), context);
+                return switch (op) {
+                    case "==" -> valuesEqual(left, right);
+                    case "!=" -> !valuesEqual(left, right);
+                    case ">=" -> compare(left, right) >= 0;
+                    case "<=" -> compare(left, right) <= 0;
+                    case ">" -> compare(left, right) > 0;
+                    default -> compare(left, right) < 0;
+                };
+            }
         }
         return truthy(operand(expr, context));
+    }
+
+    /** contains(haystack, needle): substring for strings, membership for lists. */
+    private boolean evaluateContains(String args, Map<String, Object> context) {
+        int comma = indexOfOperator(args, ",");
+        if (comma < 0) {
+            return false;
+        }
+        Object haystack = operand(args.substring(0, comma), context);
+        Object needle = operand(args.substring(comma + 1), context);
+        if (haystack instanceof List<?> list) {
+            return list.stream().anyMatch(item -> valuesEqual(item, needle));
+        }
+        if (haystack == null || needle == null) {
+            return false;
+        }
+        return String.valueOf(haystack).contains(String.valueOf(needle));
+    }
+
+    /** Numeric when both sides are numbers, lexicographic otherwise; null sorts lowest. */
+    private static int compare(Object left, Object right) {
+        BigDecimal leftNumber = toNumber(left);
+        BigDecimal rightNumber = toNumber(right);
+        if (leftNumber != null && rightNumber != null) {
+            return leftNumber.compareTo(rightNumber);
+        }
+        if (left == null || right == null) {
+            return left == null && right == null ? 0 : (left == null ? -1 : 1);
+        }
+        return String.valueOf(left).compareTo(String.valueOf(right));
     }
 
     private Object resolveStringValue(String template, Map<String, Object> context) {

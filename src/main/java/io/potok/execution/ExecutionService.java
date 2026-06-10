@@ -31,8 +31,10 @@ public class ExecutionService {
     @Transactional
     public WorkflowExecution start(Workflow workflow, Map<String, Object> triggerInfo) {
         WorkflowExecution execution = executions.insert(workflow.id(), triggerInfo);
-        String firstStep = workflow.definition().steps().get(0).name();
-        jobQueue.enqueue(execution.id(), firstStep, Instant.now());
+        // DAG: every dependency-free step starts immediately (linear flows have one root)
+        for (var root : workflow.definition().rootSteps()) {
+            jobQueue.enqueue(execution.id(), root.name(), Instant.now());
+        }
         metrics.executionStarted();
         log.info("execution_started executionId={} workflow={} trigger={}",
                 execution.id(), workflow.name(), triggerInfo.get("type"));

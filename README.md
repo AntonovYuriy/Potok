@@ -47,11 +47,16 @@ curl -s localhost:8080/api/executions/$EXEC | jq
 ```yaml
 name: garbage-reminder          # unique workflow name (required)
 
-trigger:                        # exactly one of cron | webhook (required)
+trigger:                        # exactly one of cron | webhook | poll | rss (required)
   cron: "0 19 * * *"            # 5-field crontab or 6-field Spring cron
   # webhook: { path: "gh-events" }   # → POST /hooks/gh-events starts a run
+  # poll:                            # poll an HTTP endpoint on a schedule
+  #   interval: 5m
+  #   http: { method: GET, url: "https://..." }
+  #   fire_when: "changed"           # or an expression, e.g. "{{ body.price < 100 }}"
+  # rss: { interval: 15m, url: "https://hnrss.org/frontpage" }
 
-steps:                          # ordered, executed strictly in sequence
+steps:                          # a DAG; without `needs` steps run in file order
   - name: fetch                 # unique step name (required)
     action: http                # action type (required)
     retry:                      # optional; all fields optional
@@ -67,11 +72,54 @@ steps:                          # ordered, executed strictly in sequence
 
   - name: notify
     if: "{{ steps.fetch.status == 200 }}"   # optional condition; false → step SKIPPED
+    needs: [fetch]                          # optional dependencies (see DAG below)
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"        # ${VAR} = environment variable
       text: "Завтра вывоз: {{ steps.fetch.body }}"
 ```
+
+### DAG: needs and parallelism
+
+- `needs: [a, b]` — the step runs once ALL listed steps finished successfully.
+  Steps without `needs` depend on the previous step in the file (M1/M2 linear
+  YAMLs run unchanged); the first step (or any step with `needs: []`) is a root.
+- Independent ready steps run **in parallel** (bounded by `POTOK_QUEUE_WORKERS`).
+- Cycles, unknown `needs`, and template references to steps outside the step's
+  dependency closure are rejected with 400 at create/update time.
+- Failure: a step that exhausts its retries marks the execution FAILED and its
+  downstream steps SKIPPED (`dependency failed: X`); **independent branches keep
+  running**. A DLQ requeue of the failed step un-skips its downstream.
+- A step SKIPPED **by its own `if:` condition counts as satisfied** for
+  dependents — they still run (use the condition on downstream steps too if a
+  whole branch should stop).
+
+### Conditions
+
+`if:` and `poll.fire_when` accept one comparison or function call:
+
+| Syntax | Notes |
+|---|---|
+| `a == b`, `a != b` | numeric when both sides are numbers, string otherwise |
+| `a > b`, `a < b`, `a >= b`, `a <= b` | same numeric/string rule |
+| `contains(haystack, needle)` | substring for strings, membership for lists |
+| `exists(path)` | path resolves to a non-null value |
+
+Operands: dot-paths (`steps.fetch.body.price`, `trigger.user`), numbers,
+`'strings'`, `true/false/null`.
+
+### Poll & RSS triggers
+
+`poll` fetches a URL every `interval`; `fire_when: "changed"` starts an
+execution when the response body hash changes (the first poll only records a
+baseline). An expression (over `{status, body, headers}`) fires on its
+**false → true transition** — edge-triggered, so a condition that stays true
+fires once, not every poll. `rss` starts one execution per **new** feed item
+(deduped by guid/link; first poll baselines existing items silently). Poller
+state lives in Postgres and survives restarts; the trigger payload is the
+polled response / feed item, available as `{{ trigger.* }}`. See
+[examples/coin-watcher.yaml](examples/coin-watcher.yaml) and
+[examples/rss-digest.yaml](examples/rss-digest.yaml).
 
 ### Templating
 
@@ -167,6 +215,27 @@ behind a reverse proxy or private network; auth is on the roadmap (M4).
 | `POTOK_TELEGRAM_API_BASE` | `https://api.telegram.org` | Bot API base (tests/self-hosted) |
 | `POTOK_DLQ_TELEGRAM` | `false` | telegram alert when jobs enter the DLQ |
 | `POTOK_LOG_JSON` | `false` | structured JSON logs (logstash encoder) |
+| `POTOK_API_KEY` | – | enables X-API-Key auth for `/api/**` |
+| `POTOK_RETENTION_DAYS` | `30` | nightly purge of finished executions older than this |
+
+## Dashboard
+
+A read-mostly web UI ships inside the jar — open `http://localhost:8080/`:
+workflow list with last-run status, read-only YAML + paged execution history,
+step timeline (durations, attempts, errors, output preview), DLQ with
+requeue/delete. Ops from the UI: run, enable/disable. No YAML editing (M4).
+Vanilla JS, no build step; open views auto-refresh every 7 seconds.
+
+![dashboard](docs/dashboard.png)
+
+## Auth
+
+Set `POTOK_API_KEY` and every `/api/**` call must carry the
+`X-API-Key: <key>` header (401 problem+json otherwise). Unset = auth disabled
+(local dev). Always open: `/` (dashboard assets), `/api/meta` (reports
+`authRequired` so the UI knows to prompt; the key is kept in sessionStorage),
+`/hooks/**` and actuator endpoints. Webhook signatures and per-user tokens are
+M4 scope.
 
 ## Observability
 
@@ -184,6 +253,7 @@ behind a reverse proxy or private network; auth is on the roadmap (M4).
 | `potok_step_retries_total` | counter | rescheduled attempts |
 | `potok_action_failures_total` | counter | tag: `action` (http, telegram, …) |
 | `potok_dlq_added_total` | counter | jobs dead-lettered |
+| `potok_purged_total` | counter | executions removed by retention |
 
 Logs: plain text by default; `POTOK_LOG_JSON=true` switches to structured
 JSON with `execution_id` and `workflow_name` MDC fields in step processing.

@@ -23,9 +23,15 @@ public class DlqController {
     private static final int MAX_PAGE_SIZE = 200;
 
     private final DeadLetterRepository deadLetters;
+    private final io.potok.execution.ExecutionRepository executions;
+    private final io.potok.definition.WorkflowRepository workflows;
 
-    public DlqController(DeadLetterRepository deadLetters) {
+    public DlqController(DeadLetterRepository deadLetters,
+                         io.potok.execution.ExecutionRepository executions,
+                         io.potok.definition.WorkflowRepository workflows) {
         this.deadLetters = deadLetters;
+        this.executions = executions;
+        this.workflows = workflows;
     }
 
     @GetMapping
@@ -45,7 +51,12 @@ public class DlqController {
     @PostMapping("/{id}/requeue")
     public ResponseEntity<Map<String, Object>> requeue(@PathVariable long id) {
         DeadLetter deadLetter = deadLetters.findById(id).orElseThrow(() -> notFound(id));
-        deadLetters.requeue(deadLetter);
+        // un-skip what was poisoned by this step's failure so the DAG can finish
+        java.util.Set<String> downstream = executions.findById(deadLetter.executionId())
+                .flatMap(execution -> workflows.findById(execution.workflowId()))
+                .map(workflow -> workflow.definition().downstreamClosure(deadLetter.stepName()))
+                .orElse(java.util.Set.of());
+        deadLetters.requeue(deadLetter, downstream);
         return ResponseEntity.accepted().body(Map.of(
                 "executionId", deadLetter.executionId(),
                 "stepName", deadLetter.stepName(),

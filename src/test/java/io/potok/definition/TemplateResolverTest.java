@@ -105,6 +105,44 @@ class TemplateResolverTest {
     }
 
     @Test
+    void evaluatesOrderingOperators() {
+        assertThat(resolver.evaluateCondition("{{ steps.fetch.status >= 200 }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ steps.fetch.status > 200 }}", context)).isFalse();
+        assertThat(resolver.evaluateCondition("{{ steps.fetch.status <= 200 }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ steps.fetch.status < 300 }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ steps.fetch.status < 200 }}", context)).isFalse();
+    }
+
+    @Test
+    void ordersStringsLexicographically() {
+        assertThat(resolver.evaluateCondition("{{ trigger.user > 'x' }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ trigger.user < 'z' }}", context)).isTrue();
+    }
+
+    @Test
+    void evaluatesContains() {
+        assertThat(resolver.evaluateCondition("{{ contains(steps.fetch.body.message, 'o') }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ contains(steps.fetch.body.message, 'zzz') }}", context)).isFalse();
+        // list membership
+        assertThat(resolver.evaluateCondition("{{ contains(trigger.items, 'a') }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ contains(trigger.items, 'q') }}", context)).isFalse();
+        // literal haystack
+        assertThat(resolver.evaluateCondition("contains('hello world', 'wor')", context)).isTrue();
+    }
+
+    @Test
+    void evaluatesExists() {
+        assertThat(resolver.evaluateCondition("{{ exists(steps.fetch.status) }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ exists(steps.fetch.nope) }}", context)).isFalse();
+        assertThat(resolver.evaluateCondition("{{ exists(trigger.user) }}", context)).isTrue();
+    }
+
+    @Test
+    void containsWithMissingPathIsFalse() {
+        assertThat(resolver.evaluateCondition("{{ contains(steps.nope.body, 'x') }}", context)).isFalse();
+    }
+
+    @Test
     void worksWithoutWrappingBraces() {
         assertThat(resolver.evaluateCondition("steps.fetch.status == 200", context)).isTrue();
     }

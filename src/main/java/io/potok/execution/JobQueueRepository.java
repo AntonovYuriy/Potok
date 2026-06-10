@@ -33,6 +33,7 @@ public class JobQueueRepository {
         jdbc.sql("""
                         insert into job_queue (execution_id, step_name, run_at)
                         values (:executionId, :stepName, :runAt)
+                        on conflict (execution_id, step_name) do nothing
                         """)
                 .param("executionId", executionId)
                 .param("stepName", stepName)

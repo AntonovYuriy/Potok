@@ -17,12 +17,12 @@ class RetryPolicyTest {
     private final RetryPolicy policy = new RetryPolicy(3, BASE, MAX, new Random(42));
 
     private static WorkflowDefinition.Step step(Integer maxAttempts) {
-        return new WorkflowDefinition.Step("s", "http", null, null, maxAttempts, null);
+        return new WorkflowDefinition.Step("s", "http", null, null, maxAttempts, null, null);
     }
 
     private static WorkflowDefinition.Step stepWithRetry(Integer maxAttempts, Duration base, Duration max) {
         return new WorkflowDefinition.Step("s", "http", null, null, null,
-                new WorkflowDefinition.Retry(maxAttempts, base, max));
+                new WorkflowDefinition.Retry(maxAttempts, base, max), null);
     }
 
     @Test
@@ -41,7 +41,7 @@ class RetryPolicyTest {
     @Test
     void retryBlockOverridesLegacyField() {
         WorkflowDefinition.Step step = new WorkflowDefinition.Step("s", "http", null, null, 2,
-                new WorkflowDefinition.Retry(5, null, null));
+                new WorkflowDefinition.Retry(5, null, null), null);
         assertThat(policy.maxAttempts(step)).isEqualTo(5);
     }
 

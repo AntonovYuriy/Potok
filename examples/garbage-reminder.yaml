@@ -1,20 +1,22 @@
-# Every evening at 19:00: fetch the schedule and send a Telegram reminder.
+# Every evening at 19:00: check the real Warsaw waste collection schedule
+# (warszawa19115.pl) and send a Telegram reminder when something is collected
+# tomorrow. No message on quiet days (condition skips the step).
+#
+# address_point_id: find yours via the address autocomplete on
+# https://warszawa19115.pl/harmonogramy-wywozu-odpadow
 # Requires TELEGRAM_BOT_TOKEN (app env) and TELEGRAM_CHAT_ID (substituted below).
 name: garbage-reminder
 trigger:
   cron: "0 19 * * *"
 steps:
-  - name: fetch
-    action: http
+  - name: schedule
+    action: warsaw_waste
     with:
-      method: GET
-      url: "https://www.muellabfuhr-deutschland.de/api/v1/schedule/next"
-      headers:
-        Accept: application/json
+      address_point_id: "27086987"
 
   - name: notify
-    if: "{{ steps.fetch.status == 200 }}"
+    if: "{{ steps.schedule.tomorrow_count != 0 }}"
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "Завтра вывоз мусора: {{ steps.fetch.body }}"
+      text: "🗑️ Завтра вывоз ({{ steps.schedule.tomorrow_date }}): {{ steps.schedule.summary }}"

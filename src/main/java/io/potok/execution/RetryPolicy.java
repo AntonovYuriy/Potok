@@ -24,8 +24,10 @@ public class RetryPolicy {
 
     @Autowired
     public RetryPolicy(QueueProperties properties) {
+        // java.util.Random: thread-safe and present in slim JREs —
+        // RandomGenerator.getDefault() needs the jdk.random module, which jre images may lack
         this(properties.defaultMaxAttempts(), properties.retryBaseDelay(), properties.retryMaxDelay(),
-                RandomGenerator.getDefault());
+                new java.util.Random());
     }
 
     public RetryPolicy(int defaultMaxAttempts, Duration baseDelay, Duration maxDelay, RandomGenerator random) {

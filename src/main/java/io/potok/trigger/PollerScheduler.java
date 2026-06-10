@@ -5,8 +5,9 @@ import io.potok.definition.WorkflowDefinition;
 import io.potok.definition.WorkflowRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.TaskScheduler;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -47,7 +48,13 @@ public class PollerScheduler {
         this.taskScheduler = taskScheduler;
     }
 
-    @EventListener(WorkflowsChangedEvent.class)
+    /**
+     * AFTER_COMMIT: the event is published inside the create/update transaction;
+     * refreshing earlier lets the poller's immediate first tick read the database
+     * before the workflow row is committed (baseline silently skipped — flaked on CI).
+     */
+    @TransactionalEventListener(value = WorkflowsChangedEvent.class,
+            phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public synchronized void onWorkflowsChanged() {
         refresh();
     }

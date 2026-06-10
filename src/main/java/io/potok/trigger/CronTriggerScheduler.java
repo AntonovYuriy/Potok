@@ -30,7 +30,7 @@ public class CronTriggerScheduler {
     private static final Logger log = LoggerFactory.getLogger(CronTriggerScheduler.class);
 
     private final WorkflowRepository workflows;
-    private final ExecutionService executionService;
+    private final CronFireService fireService;
     private final TaskScheduler taskScheduler;
 
     private record Registration(String cron, ScheduledFuture<?> future) {
@@ -39,10 +39,10 @@ public class CronTriggerScheduler {
     private final Map<UUID, Registration> registrations = new HashMap<>();
 
     public CronTriggerScheduler(WorkflowRepository workflows,
-                                ExecutionService executionService,
+                                CronFireService fireService,
                                 TaskScheduler taskScheduler) {
         this.workflows = workflows;
-        this.executionService = executionService;
+        this.fireService = fireService;
         this.taskScheduler = taskScheduler;
     }
 
@@ -86,9 +86,6 @@ public class CronTriggerScheduler {
     private void fire(UUID workflowId) {
         workflows.findById(workflowId)
                 .filter(Workflow::enabled)
-                .ifPresent(workflow -> executionService.start(workflow, Map.of(
-                        "type", "cron",
-                        "cron", workflow.definition().trigger().cron(),
-                        "payload", Map.of())));
+                .ifPresent(fireService::fire);
     }
 }

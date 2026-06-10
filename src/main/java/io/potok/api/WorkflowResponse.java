@@ -12,6 +12,7 @@ public record WorkflowResponse(
         boolean enabled,
         WorkflowDefinition definition,
         String yamlSource,
+        int currentVersion,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {
 
@@ -22,6 +23,7 @@ public record WorkflowResponse(
                 workflow.enabled(),
                 workflow.definition(),
                 workflow.yamlSource(),
+                workflow.currentVersion(),
                 workflow.createdAt(),
                 workflow.updatedAt());
     }

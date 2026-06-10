@@ -62,6 +62,8 @@ public class RetentionPurger {
                         """)
                 .param("cutoff", cutoff)
                 .update();
+        // cron dedupe claims are only meaningful for a minute — keep a day for forensics
+        jdbc.sql("delete from cron_fire where fire_time < now() - interval '1 day'").update();
         if (executions > 0) {
             purged.increment(executions);
             log.info("retention_purged executions={} olderThanDays={}", executions, retentionDays);

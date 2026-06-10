@@ -101,7 +101,10 @@ public class JobProcessor {
         }
         Workflow workflow = workflowFound.get();
         MDC.put("workflow_name", workflow.name());
-        WorkflowDefinition.Step step = workflow.definition().step(job.stepName());
+        // executions run their snapshot; pre-M4 rows (no snapshot) fall back to the live definition
+        WorkflowDefinition definition = execution.definition() != null
+                ? execution.definition() : workflow.definition();
+        WorkflowDefinition.Step step = definition.step(job.stepName());
         if (step == null) {
             failExecution(job, execution.id(), "step '" + job.stepName() + "' not found in definition");
             return;
@@ -112,7 +115,7 @@ public class JobProcessor {
         // Idempotency: a step that already SUCCEEDED for this execution is never re-run.
         Optional<StepExecution> existing = steps.find(execution.id(), step.name());
         if (existing.isPresent() && existing.get().status() == StepStatus.SUCCEEDED) {
-            onStepFinished(job, workflow, execution.id());
+            onStepFinished(job, definition, workflow.name(), execution.id());
             return;
         }
 
@@ -123,7 +126,7 @@ public class JobProcessor {
             steps.markSkipped(execution.id(), step.name(), null);
             log.info("step_skipped executionId={} step={} condition={}",
                     execution.id(), step.name(), step.condition());
-            onStepFinished(job, workflow, execution.id());
+            onStepFinished(job, definition, workflow.name(), execution.id());
             return;
         }
 
@@ -131,7 +134,7 @@ public class JobProcessor {
         if (handler == null) {
             steps.markFailed(execution.id(), step.name(),
                     "unknown action '" + step.action() + "'; available: " + actions.types(), true);
-            onStepFailedFinally(job, workflow, execution.id(), step);
+            onStepFailedFinally(job, definition, workflow.name(), execution.id(), step);
             return;
         }
 
@@ -151,7 +154,7 @@ public class JobProcessor {
             steps.markSucceeded(execution.id(), step.name(),
                     result.output() == null ? Map.of() : result.output());
             log.info("step_succeeded executionId={} step={} attempt={}", execution.id(), step.name(), attempt);
-            onStepFinished(job, workflow, execution.id());
+            onStepFinished(job, definition, workflow.name(), execution.id());
             return;
         }
 
@@ -165,7 +168,7 @@ public class JobProcessor {
         } else {
             steps.markFailed(execution.id(), step.name(), result.error(), true);
             deadLetter(job, workflow, execution, step, attempt, result.error(), input);
-            onStepFailedFinally(job, workflow, execution.id(), step);
+            onStepFailedFinally(job, definition, workflow.name(), execution.id(), step);
             log.warn("step_failed executionId={} step={} attempts={} error={}",
                     execution.id(), step.name(), attempt, result.error());
         }
@@ -188,9 +191,9 @@ public class JobProcessor {
      * enqueue every step whose needs are now all satisfied, then finish the
      * execution if the whole graph is terminal.
      */
-    private void onStepFinished(QueuedJob job, Workflow workflow, UUID executionId) {
-        enqueueReadySteps(workflow, executionId);
-        finishIfComplete(workflow, executionId);
+    private void onStepFinished(QueuedJob job, WorkflowDefinition definition, String workflowName, UUID executionId) {
+        enqueueReadySteps(definition, executionId);
+        finishIfComplete(definition, workflowName, executionId);
         jobQueue.delete(job.id());
     }
 
@@ -199,10 +202,10 @@ public class JobProcessor {
      * SKIPPED, not FAILED), let independent branches keep running, finish when
      * the graph is terminal — final status will be FAILED.
      */
-    private void onStepFailedFinally(QueuedJob job, Workflow workflow, UUID executionId,
-                                     WorkflowDefinition.Step failedStep) {
-        cascadeSkipDownstream(workflow.definition(), executionId, failedStep.name());
-        finishIfComplete(workflow, executionId);
+    private void onStepFailedFinally(QueuedJob job, WorkflowDefinition definition, String workflowName,
+                                     UUID executionId, WorkflowDefinition.Step failedStep) {
+        cascadeSkipDownstream(definition, executionId, failedStep.name());
+        finishIfComplete(definition, workflowName, executionId);
         jobQueue.delete(job.id());
     }
 
@@ -233,14 +236,14 @@ public class JobProcessor {
         }
     }
 
-    private void enqueueReadySteps(Workflow workflow, UUID executionId) {
+    private void enqueueReadySteps(WorkflowDefinition definition, UUID executionId) {
         Map<String, StepExecution> rows = stepRowsByName(executionId);
-        for (WorkflowDefinition.Step step : workflow.definition().steps()) {
+        for (WorkflowDefinition.Step step : definition.steps()) {
             StepExecution row = rows.get(step.name());
             if (row != null) {
                 continue; // terminal, running, or awaiting retry — all have a row
             }
-            boolean ready = workflow.definition().effectiveNeeds(step.name()).stream()
+            boolean ready = definition.effectiveNeeds(step.name()).stream()
                     .allMatch(need -> isSatisfied(rows.get(need)));
             if (ready) {
                 // ON CONFLICT dedupes the join step when two branches finish at once
@@ -249,9 +252,9 @@ public class JobProcessor {
         }
     }
 
-    private void finishIfComplete(Workflow workflow, UUID executionId) {
+    private void finishIfComplete(WorkflowDefinition definition, String workflowName, UUID executionId) {
         Map<String, StepExecution> rows = stepRowsByName(executionId);
-        boolean allTerminal = workflow.definition().steps().stream()
+        boolean allTerminal = definition.steps().stream()
                 .allMatch(step -> isTerminal(rows.get(step.name())));
         if (!allTerminal) {
             return;
@@ -261,10 +264,10 @@ public class JobProcessor {
         if (executions.markFinished(executionId, finalStatus)) {
             if (anyFailed) {
                 metrics.executionFailed();
-                log.warn("execution_failed executionId={} workflow={}", executionId, workflow.name());
+                log.warn("execution_failed executionId={} workflow={}", executionId, workflowName);
             } else {
                 metrics.executionSucceeded();
-                log.info("execution_succeeded executionId={} workflow={}", executionId, workflow.name());
+                log.info("execution_succeeded executionId={} workflow={}", executionId, workflowName);
             }
         }
     }

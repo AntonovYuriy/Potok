@@ -1,7 +1,26 @@
 // View renderers. Each returns nothing; they write into #view.
-import { api } from './api.js';
+import { api, apiYaml } from './api.js';
 
 const view = () => document.getElementById('view');
+
+/** Non-blocking error banner (e.g. enable-name conflicts) instead of raw alerts. */
+export function flash(message) {
+    document.querySelector('.flash')?.remove();
+    const banner = document.createElement('div');
+    banner.className = 'flash';
+    banner.textContent = `⚠️ ${message}`;
+    view().prepend(banner);
+    setTimeout(() => banner.remove(), 6000);
+}
+
+async function op(action, refresh) {
+    try {
+        await action();
+    } catch (e) {
+        flash(e.message);
+    }
+    refresh();
+}
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtTime = t => t ? new Date(t).toLocaleString() : '—';
 const duration = (a, b) => (a && b) ? `${((new Date(b) - new Date(a)) / 1000).toFixed(2)}s` : '';
@@ -38,30 +57,26 @@ export async function workflowList() {
     }).join('');
 
     view().innerHTML = `<h1>Workflows</h1>
-        ${workflows.length === 0 ? '<div class="empty">No workflows yet — POST YAML to /api/workflows</div>' : `
+        <div class="toolbar"><a class="btn" href="#/new">＋ New workflow</a></div>
+        ${workflows.length === 0 ? '<div class="empty">No workflows yet — create one with the editor</div>' : `
         <table>
             <thead><tr><th>Name</th><th>Trigger</th><th>State</th><th>Last run</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
         </table>`}`;
 
-    view().querySelectorAll('[data-run]').forEach(b => b.onclick = async () => {
-        await api(`/api/workflows/${b.dataset.run}/run`, { method: 'POST' });
-        workflowList();
-    });
-    view().querySelectorAll('[data-disable]').forEach(b => b.onclick = async () => {
-        await api(`/api/workflows/${b.dataset.disable}`, { method: 'DELETE' });
-        workflowList();
-    });
-    view().querySelectorAll('[data-enable]').forEach(b => b.onclick = async () => {
-        await api(`/api/workflows/${b.dataset.enable}/enable`, { method: 'POST' });
-        workflowList();
-    });
+    view().querySelectorAll('[data-run]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/workflows/${b.dataset.run}/run`, { method: 'POST' }), workflowList));
+    view().querySelectorAll('[data-disable]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/workflows/${b.dataset.disable}`, { method: 'DELETE' }), workflowList));
+    view().querySelectorAll('[data-enable]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/workflows/${b.dataset.enable}/enable`, { method: 'POST' }), workflowList));
 }
 
 export async function workflowDetail(id, page = 0) {
-    const [workflow, executions] = await Promise.all([
+    const [workflow, executions, versions] = await Promise.all([
         api(`/api/workflows/${id}`),
         api(`/api/executions?workflowId=${id}&page=${page}&size=20`),
+        api(`/api/workflows/${id}/versions?size=20`),
     ]);
 
     const rows = executions.map(e => `<tr>
@@ -78,9 +93,24 @@ export async function workflowDetail(id, page = 0) {
         </h1>
         <div class="toolbar">
             <button id="run-btn" ${workflow.enabled ? '' : 'disabled'}>Run now</button>
-            <span class="muted">${triggerKind(workflow.definition)}</span>
+            <a class="btn" href="#/wf/${id}/edit">Edit</a>
+            <span class="muted">${triggerKind(workflow.definition)} · v${workflow.currentVersion}</span>
         </div>
-        <div class="card"><h2 class="muted">Definition</h2><pre class="yaml">${esc(workflow.yamlSource)}</pre></div>
+        <div class="card"><h2 class="muted">Definition <span class="muted">v${workflow.currentVersion}</span></h2><pre class="yaml">${esc(workflow.yamlSource)}</pre></div>
+        <div class="card">
+            <h2 class="muted">Versions <span class="muted">${versions.total} total</span></h2>
+            ${versions.items.map(v => `
+                <details class="version">
+                    <summary>
+                        <span class="mono">v${v.versionNo}</span>
+                        ${v.versionNo === workflow.currentVersion ? '<span class="status enabled">current</span>' : ''}
+                        <span class="muted">${fmtTime(v.createdAt)}${v.comment ? ' · ' + esc(v.comment) : ''}</span>
+                        ${v.versionNo !== workflow.currentVersion
+                            ? `<button data-rollback="${v.versionNo}">Rollback to this</button>` : ''}
+                    </summary>
+                    <pre class="yaml">${esc(v.yamlSource)}</pre>
+                </details>`).join('')}
+        </div>
         <h2>Executions <span class="muted">page ${page + 1}</span></h2>
         ${executions.length === 0 && page === 0 ? '<div class="empty">No executions yet</div>' : `
         <table>
@@ -93,11 +123,18 @@ export async function workflowDetail(id, page = 0) {
         </div>`;
 
     document.getElementById('run-btn').onclick = async () => {
-        const r = await api(`/api/workflows/${id}/run`, { method: 'POST' });
-        location.hash = `#/exec/${r.executionId}`;
+        try {
+            const r = await api(`/api/workflows/${id}/run`, { method: 'POST' });
+            location.hash = `#/exec/${r.executionId}`;
+        } catch (e) {
+            flash(e.message);
+        }
     };
     document.getElementById('prev').onclick = () => workflowDetail(id, page - 1);
     document.getElementById('next').onclick = () => workflowDetail(id, page + 1);
+    view().querySelectorAll('[data-rollback]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/workflows/${id}/versions/${b.dataset.rollback}/rollback`, { method: 'POST' }),
+                () => workflowDetail(id, 0)));
 }
 
 export async function executionDetail(id) {
@@ -150,14 +187,131 @@ export async function dlqList() {
             <tbody>${rows}</tbody>
         </table>`}`;
 
-    view().querySelectorAll('[data-requeue]').forEach(b => b.onclick = async () => {
-        await api(`/api/dlq/${b.dataset.requeue}/requeue`, { method: 'POST' });
-        dlqList();
+    view().querySelectorAll('[data-requeue]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/dlq/${b.dataset.requeue}/requeue`, { method: 'POST' }), dlqList));
+    view().querySelectorAll('[data-delete]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/dlq/${b.dataset.delete}`, { method: 'DELETE' }), dlqList));
+}
+
+const EDITOR_TEMPLATE = `name: my-workflow
+trigger:
+  webhook: { path: "my-workflow" }
+  # or: cron: "0 9 * * *"
+  # or: poll: { interval: 5m, http: { url: "https://..." }, fire_when: "changed" }
+steps:
+  - name: fetch
+    action: http
+    with:
+      method: GET
+      url: "https://example.com/api"
+
+  - name: notify
+    needs: [fetch]
+    if: "{{ steps.fetch.status == 200 }}"
+    action: telegram
+    with:
+      chat_id: "\${TELEGRAM_CHAT_ID}"
+      text: "Result: {{ steps.fetch.body }}"
+`;
+
+/** Editor: textarea + line numbers + tab handling; 400s render inline. */
+export async function editorView(id) {
+    const existing = id ? await api(`/api/workflows/${id}`) : null;
+    view().innerHTML = `
+        <h1>${existing ? `Edit <span class="mono">${esc(existing.name)}</span>` : 'New workflow'}</h1>
+        <div class="editor-wrap">
+            <pre class="gutter" id="gutter" aria-hidden="true"></pre>
+            <textarea id="yaml-editor" spellcheck="false" autocomplete="off"></textarea>
+        </div>
+        <div id="editor-error" class="editor-error" hidden></div>
+        <div class="toolbar">
+            <button id="save-btn">${existing ? 'Save (new version)' : 'Create'}</button>
+            <a class="btn" href="${existing ? `#/wf/${id}` : '#/'}">Cancel</a>
+        </div>`;
+
+    const textarea = document.getElementById('yaml-editor');
+    const gutter = document.getElementById('gutter');
+    textarea.value = existing ? existing.yamlSource : EDITOR_TEMPLATE;
+
+    const syncGutter = () => {
+        const lines = textarea.value.split('\n').length;
+        gutter.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
+    };
+    textarea.addEventListener('input', syncGutter);
+    textarea.addEventListener('scroll', () => { gutter.scrollTop = textarea.scrollTop; });
+    textarea.addEventListener('keydown', e => {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const { selectionStart: s, selectionEnd: end } = textarea;
+            textarea.setRangeText('  ', s, end, 'end');
+            syncGutter();
+        }
     });
-    view().querySelectorAll('[data-delete]').forEach(b => b.onclick = async () => {
-        await api(`/api/dlq/${b.dataset.delete}`, { method: 'DELETE' });
-        dlqList();
-    });
+    syncGutter();
+
+    document.getElementById('save-btn').onclick = async () => {
+        const errorBox = document.getElementById('editor-error');
+        errorBox.hidden = true;
+        try {
+            const saved = existing
+                ? await apiYaml(`/api/workflows/${id}`, 'PUT', textarea.value)
+                : await apiYaml('/api/workflows', 'POST', textarea.value);
+            location.hash = `#/wf/${saved.id}`;
+        } catch (e) {
+            errorBox.textContent = `✗ ${e.message}`;
+            errorBox.hidden = false;
+        }
+    };
+}
+
+export async function tokensView() {
+    const tokens = await api('/api/tokens');
+    const rows = tokens.map(t => `<tr>
+        <td>${esc(t.name)}</td>
+        <td class="muted">${fmtTime(t.createdAt)}</td>
+        <td class="muted">${t.lastUsedAt ? fmtTime(t.lastUsedAt) : 'never'}</td>
+        <td>${t.revokedAt
+            ? `<span class="status disabled">revoked</span>`
+            : `<span class="status enabled">active</span>`}</td>
+        <td>${t.revokedAt ? '' : `<button class="danger" data-revoke="${t.id}">Revoke</button>`}</td>
+    </tr>`).join('');
+
+    view().innerHTML = `<h1>API tokens</h1>
+        <div class="toolbar">
+            <input id="token-name" placeholder="token name (e.g. ci-bot)">
+            <button id="token-create">Create token</button>
+        </div>
+        ${tokens.length === 0 ? '<div class="empty">No tokens yet. The POTOK_API_KEY env var is the bootstrap root key.</div>' : `
+        <table>
+            <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th>State</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`}
+        <dialog id="token-dialog">
+            <h2>Token created</h2>
+            <p class="muted">Copy it now — it is shown only once.</p>
+            <pre class="yaml" id="token-value"></pre>
+            <button id="token-close">Done</button>
+        </dialog>`;
+
+    document.getElementById('token-create').onclick = async () => {
+        const name = document.getElementById('token-name').value.trim();
+        if (!name) { flash('token name is required'); return; }
+        try {
+            const created = await api('/api/tokens', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+            document.getElementById('token-value').textContent = created.token;
+            const dialog = document.getElementById('token-dialog');
+            document.getElementById('token-close').onclick = () => { dialog.close(); tokensView(); };
+            dialog.showModal();
+        } catch (e) {
+            flash(e.message);
+        }
+    };
+    view().querySelectorAll('[data-revoke]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/tokens/${b.dataset.revoke}`, { method: 'DELETE' }), tokensView));
 }
 
 export async function refreshDlqBadge() {

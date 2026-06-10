@@ -73,6 +73,28 @@ public class WorkflowController {
         return workflowService.enable(id).map(WorkflowResponse::from).orElseThrow(() -> notFound(id));
     }
 
+    @GetMapping("/{id}/versions")
+    public Map<String, Object> versions(@PathVariable UUID id,
+                                        @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+                                        @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size) {
+        workflowService.findById(id).orElseThrow(() -> notFound(id));
+        int boundedSize = Math.min(Math.max(size, 1), 100);
+        return Map.of(
+                "items", workflowService.versions(id, Math.max(page, 0), boundedSize),
+                "total", workflowService.versionCount(id),
+                "page", Math.max(page, 0),
+                "size", boundedSize);
+    }
+
+    /** Rollback = append a new version with the old content; history is never rewritten. */
+    @PostMapping("/{id}/versions/{versionNo}/rollback")
+    public WorkflowResponse rollback(@PathVariable UUID id, @PathVariable int versionNo) {
+        return workflowService.rollback(id, versionNo)
+                .map(WorkflowResponse::from)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "workflow " + id + " or version " + versionNo + " not found"));
+    }
+
     @PostMapping("/{id}/run")
     public ResponseEntity<Map<String, Object>> run(@PathVariable UUID id) {
         Workflow workflow = workflowService.findById(id).orElseThrow(() -> notFound(id));

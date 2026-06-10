@@ -101,6 +101,50 @@ class PollerIntegrationTest extends IntegrationTestBase {
                 assertThat(executionsOf(workflowId)).hasSize(2));
     }
 
+    @Test
+    void extractIgnoresNoisyBody() throws Exception {
+        WIRE_MOCK.stubFor(get(urlEqualTo("/ok")).willReturn(aResponse().withStatus(200)));
+        // noisy timestamp changes every call; price is stable
+        WIRE_MOCK.stubFor(get(urlEqualTo("/shop"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"ts\": \"%s\", \"product\": {\"price\": 149}}".formatted(System.nanoTime()))));
+
+        var created = postYaml("/api/workflows", """
+                name: poll-extract
+                trigger:
+                  poll:
+                    interval: 300ms
+                    http: { method: GET, url: "%s/shop" }
+                    extract: { jsonpath: "$.product.price" }
+                    fire_when: "changed"
+                steps:
+                  - { name: noop, action: http, with: { url: "%s/ok", fail_on_status: false } }
+                """.formatted(WIRE_MOCK.baseUrl(), WIRE_MOCK.baseUrl()));
+        String workflowId = (String) created.getBody().get("id");
+
+        // several polls with changing ts but same price: no fire
+        Thread.sleep(1500);
+        WIRE_MOCK.stubFor(get(urlEqualTo("/shop"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"ts\": \"%s\", \"product\": {\"price\": 149}}".formatted(System.nanoTime()))));
+        Thread.sleep(1200);
+        assertThat(executionsOf(workflowId)).isEmpty();
+
+        // price actually changes -> exactly one fire, payload carries the extracted value
+        WIRE_MOCK.stubFor(get(urlEqualTo("/shop"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"ts\": \"x\", \"product\": {\"price\": 99}}")));
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(executionsOf(workflowId)).hasSize(1));
+
+        Map<String, Object> execution = getExecution(
+                (String) executionsOf(workflowId).get(0).get("id"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>)
+                ((Map<String, Object>) execution.get("triggerInfo")).get("payload");
+        assertThat(payload.get("value")).isEqualTo(99);
+    }
+
     private static String rssFeed(String... items) {
         StringBuilder entries = new StringBuilder();
         for (String item : items) {

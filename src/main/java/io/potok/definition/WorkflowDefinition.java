@@ -21,7 +21,13 @@ public record WorkflowDefinition(
     public record Trigger(String cron, Webhook webhook, Poll poll, Rss rss) {
     }
 
-    public record Webhook(String path) {
+    /**
+     * {@code hmacSecretEnv} names an ENVIRONMENT VARIABLE holding the shared
+     * secret — the secret itself never touches YAML or the database. When set,
+     * deliveries must carry a valid GitHub-style X-Hub-Signature-256 header.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Webhook(String path, @JsonProperty("hmac_secret_env") String hmacSecretEnv) {
     }
 
     /**
@@ -32,7 +38,17 @@ public record WorkflowDefinition(
     public record Poll(
             Duration interval,
             Map<String, Object> http,
-            @JsonProperty("fire_when") String fireWhen) {
+            @JsonProperty("fire_when") String fireWhen,
+            Extract extract) {
+    }
+
+    /**
+     * Optional value extraction before compare/evaluate: jsonpath for JSON
+     * responses, css selector (first match, text) for HTML. changed-mode then
+     * hashes only the extracted value; expressions see it as {@code poll.value}.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Extract(String jsonpath, String css) {
     }
 
     /** RSS/Atom poller: one execution per new feed item, deduped by guid/link. */

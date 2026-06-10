@@ -226,8 +226,8 @@ class YamlDefinitionParserTest {
                 """);
 
         assertThat(definition.step("a").name()).isEqualTo("a");
-        assertThat(definition.nextStep("a").name()).isEqualTo("b");
-        assertThat(definition.nextStep("b")).isNull();
+        assertThat(definition.downstreamClosure("a")).containsExactly("b");
+        assertThat(definition.downstreamClosure("b")).isEmpty();
     }
 
     @Test

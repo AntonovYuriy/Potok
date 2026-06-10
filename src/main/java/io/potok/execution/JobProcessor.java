@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -111,17 +112,18 @@ public class JobProcessor {
         // Idempotency: a step that already SUCCEEDED for this execution is never re-run.
         Optional<StepExecution> existing = steps.find(execution.id(), step.name());
         if (existing.isPresent() && existing.get().status() == StepStatus.SUCCEEDED) {
-            advance(job, workflow, execution.id(), step);
+            onStepFinished(job, workflow, execution.id());
             return;
         }
 
         Map<String, Object> context = buildContext(execution);
 
         if (step.condition() != null && !templates.evaluateCondition(step.condition(), context)) {
-            steps.markSkipped(execution.id(), step.name());
+            // condition-skip: downstream needs treat this as satisfied
+            steps.markSkipped(execution.id(), step.name(), null);
             log.info("step_skipped executionId={} step={} condition={}",
                     execution.id(), step.name(), step.condition());
-            advance(job, workflow, execution.id(), step);
+            onStepFinished(job, workflow, execution.id());
             return;
         }
 
@@ -129,7 +131,7 @@ public class JobProcessor {
         if (handler == null) {
             steps.markFailed(execution.id(), step.name(),
                     "unknown action '" + step.action() + "'; available: " + actions.types(), true);
-            failExecution(job, execution.id(), "unknown action '" + step.action() + "'");
+            onStepFailedFinally(job, workflow, execution.id(), step);
             return;
         }
 
@@ -149,7 +151,7 @@ public class JobProcessor {
             steps.markSucceeded(execution.id(), step.name(),
                     result.output() == null ? Map.of() : result.output());
             log.info("step_succeeded executionId={} step={} attempt={}", execution.id(), step.name(), attempt);
-            advance(job, workflow, execution.id(), step);
+            onStepFinished(job, workflow, execution.id());
             return;
         }
 
@@ -163,7 +165,7 @@ public class JobProcessor {
         } else {
             steps.markFailed(execution.id(), step.name(), result.error(), true);
             deadLetter(job, workflow, execution, step, attempt, result.error(), input);
-            failExecution(job, execution.id(), result.error());
+            onStepFailedFinally(job, workflow, execution.id(), step);
             log.warn("step_failed executionId={} step={} attempts={} error={}",
                     execution.id(), step.name(), attempt, result.error());
         }
@@ -181,17 +183,109 @@ public class JobProcessor {
         log.warn("job_dead_lettered executionId={} step={} attempts={}", execution.id(), step.name(), attempts);
     }
 
-    /** Step finished (succeeded or skipped): enqueue the next one or finish the execution. */
-    private void advance(QueuedJob job, Workflow workflow, UUID executionId, WorkflowDefinition.Step step) {
-        WorkflowDefinition.Step next = workflow.definition().nextStep(step.name());
-        if (next != null) {
-            jobQueue.enqueue(executionId, next.name(), Instant.now());
-        } else {
-            executions.markFinished(executionId, ExecutionStatus.SUCCEEDED);
-            metrics.executionSucceeded();
-            log.info("execution_succeeded executionId={} workflow={}", executionId, workflow.name());
-        }
+    /**
+     * Step reached a satisfied terminal state (SUCCEEDED or condition-SKIPPED):
+     * enqueue every step whose needs are now all satisfied, then finish the
+     * execution if the whole graph is terminal.
+     */
+    private void onStepFinished(QueuedJob job, Workflow workflow, UUID executionId) {
+        enqueueReadySteps(workflow, executionId);
+        finishIfComplete(workflow, executionId);
         jobQueue.delete(job.id());
+    }
+
+    /**
+     * Step failed for good: poison everything downstream (those steps are
+     * SKIPPED, not FAILED), let independent branches keep running, finish when
+     * the graph is terminal — final status will be FAILED.
+     */
+    private void onStepFailedFinally(QueuedJob job, Workflow workflow, UUID executionId,
+                                     WorkflowDefinition.Step failedStep) {
+        cascadeSkipDownstream(workflow.definition(), executionId, failedStep.name());
+        finishIfComplete(workflow, executionId);
+        jobQueue.delete(job.id());
+    }
+
+    static final String DEPENDENCY_FAILED_PREFIX = "dependency failed: ";
+
+    private void cascadeSkipDownstream(WorkflowDefinition definition, UUID executionId, String failedName) {
+        Map<String, StepExecution> rows = stepRowsByName(executionId);
+        java.util.Set<String> poisoned = new java.util.HashSet<>();
+        poisoned.add(failedName);
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (WorkflowDefinition.Step step : definition.steps()) {
+                if (poisoned.contains(step.name()) || isTerminal(rows.get(step.name()))) {
+                    continue;
+                }
+                List<String> needs = definition.effectiveNeeds(step.name());
+                Optional<String> badNeed = needs.stream().filter(poisoned::contains).findFirst();
+                if (badNeed.isPresent()) {
+                    steps.markSkipped(executionId, step.name(),
+                            DEPENDENCY_FAILED_PREFIX + badNeed.get());
+                    log.info("step_skipped_dependency executionId={} step={} failedDependency={}",
+                            executionId, step.name(), badNeed.get());
+                    poisoned.add(step.name());
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    private void enqueueReadySteps(Workflow workflow, UUID executionId) {
+        Map<String, StepExecution> rows = stepRowsByName(executionId);
+        for (WorkflowDefinition.Step step : workflow.definition().steps()) {
+            StepExecution row = rows.get(step.name());
+            if (row != null) {
+                continue; // terminal, running, or awaiting retry — all have a row
+            }
+            boolean ready = workflow.definition().effectiveNeeds(step.name()).stream()
+                    .allMatch(need -> isSatisfied(rows.get(need)));
+            if (ready) {
+                // ON CONFLICT dedupes the join step when two branches finish at once
+                jobQueue.enqueue(executionId, step.name(), Instant.now());
+            }
+        }
+    }
+
+    private void finishIfComplete(Workflow workflow, UUID executionId) {
+        Map<String, StepExecution> rows = stepRowsByName(executionId);
+        boolean allTerminal = workflow.definition().steps().stream()
+                .allMatch(step -> isTerminal(rows.get(step.name())));
+        if (!allTerminal) {
+            return;
+        }
+        boolean anyFailed = rows.values().stream().anyMatch(r -> r.status() == StepStatus.FAILED);
+        ExecutionStatus finalStatus = anyFailed ? ExecutionStatus.FAILED : ExecutionStatus.SUCCEEDED;
+        if (executions.markFinished(executionId, finalStatus)) {
+            if (anyFailed) {
+                metrics.executionFailed();
+                log.warn("execution_failed executionId={} workflow={}", executionId, workflow.name());
+            } else {
+                metrics.executionSucceeded();
+                log.info("execution_succeeded executionId={} workflow={}", executionId, workflow.name());
+            }
+        }
+    }
+
+    private Map<String, StepExecution> stepRowsByName(UUID executionId) {
+        Map<String, StepExecution> byName = new LinkedHashMap<>();
+        for (StepExecution row : steps.findByExecution(executionId)) {
+            byName.put(row.stepName(), row);
+        }
+        return byName;
+    }
+
+    private static boolean isTerminal(StepExecution row) {
+        return row != null && (row.status() == StepStatus.SUCCEEDED
+                || row.status() == StepStatus.FAILED
+                || row.status() == StepStatus.SKIPPED);
+    }
+
+    /** SUCCEEDED satisfies a need; so does SKIPPED — dependency-skips cascade eagerly, so any SKIPPED seen here is a condition-skip. */
+    private static boolean isSatisfied(StepExecution row) {
+        return row != null && (row.status() == StepStatus.SUCCEEDED || row.status() == StepStatus.SKIPPED);
     }
 
     private void failExecution(QueuedJob job, UUID executionId, String reason) {

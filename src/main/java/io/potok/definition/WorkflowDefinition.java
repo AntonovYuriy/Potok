@@ -101,13 +101,17 @@ public record WorkflowDefinition(
                 .orElse(null);
     }
 
-    /** Returns the step after the given one, or null when it is the last. */
-    public Step nextStep(String stepName) {
-        for (int i = 0; i < steps.size() - 1; i++) {
-            if (steps.get(i).name().equals(stepName)) {
-                return steps.get(i + 1);
+    /** Transitive dependents of a step — what a DLQ requeue needs to un-skip. */
+    public java.util.Set<String> downstreamClosure(String stepName) {
+        java.util.Set<String> closure = new java.util.LinkedHashSet<>();
+        java.util.Deque<String> queue = new java.util.ArrayDeque<>(List.of(stepName));
+        while (!queue.isEmpty()) {
+            for (Step dependent : dependents(queue.poll())) {
+                if (closure.add(dependent.name())) {
+                    queue.add(dependent.name());
+                }
             }
         }
-        return null;
+        return closure;
     }
 }

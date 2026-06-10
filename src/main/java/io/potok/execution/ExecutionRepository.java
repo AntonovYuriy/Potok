@@ -69,15 +69,16 @@ public class ExecutionRepository {
                 .update();
     }
 
-    public void markFinished(UUID id, ExecutionStatus status) {
-        jdbc.sql("""
+    /** @return true when this call performed the transition (guards double-finish from racing branches) */
+    public boolean markFinished(UUID id, ExecutionStatus status) {
+        return jdbc.sql("""
                         update workflow_execution
                         set status = :status, finished_at = now()
-                        where id = :id
+                        where id = :id and status in ('PENDING', 'RUNNING')
                         """)
                 .param("id", id)
                 .param("status", status.name())
-                .update();
+                .update() > 0;
     }
 
     private WorkflowExecution mapRow(ResultSet rs, int rowNum) throws SQLException {

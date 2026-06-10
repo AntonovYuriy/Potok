@@ -97,15 +97,34 @@ public class StepExecutionRepository {
                 .update();
     }
 
-    public void markSkipped(UUID executionId, String stepName) {
+    /** @param reason null = skipped by its own condition; non-null = upstream dependency failed */
+    public void markSkipped(UUID executionId, String stepName, String reason) {
         jdbc.sql("""
-                        insert into step_execution (execution_id, step_name, status, finished_at)
-                        values (:executionId, :stepName, 'SKIPPED', now())
+                        insert into step_execution (execution_id, step_name, status, error, finished_at)
+                        values (:executionId, :stepName, 'SKIPPED', :reason, now())
                         on conflict (execution_id, step_name) do update
-                        set status = 'SKIPPED', finished_at = now()
+                        set status = 'SKIPPED', error = :reason, finished_at = now()
                         """)
                 .param("executionId", executionId)
                 .param("stepName", stepName)
+                .param("reason", reason)
+                .update();
+    }
+
+    /** DLQ requeue: forget dependency-skips downstream of the revived step so they can run again. */
+    public void resetDependencySkipped(UUID executionId, java.util.Collection<String> stepNames) {
+        if (stepNames.isEmpty()) {
+            return;
+        }
+        jdbc.sql("""
+                        delete from step_execution
+                        where execution_id = :executionId
+                          and step_name in (:names)
+                          and status = 'SKIPPED'
+                          and error like 'dependency failed:%'
+                        """)
+                .param("executionId", executionId)
+                .param("names", new java.util.ArrayList<>(stepNames))
                 .update();
     }
 

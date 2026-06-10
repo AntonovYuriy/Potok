@@ -61,6 +61,13 @@ public class WorkflowRepository {
                 .update() > 0;
     }
 
+    public Optional<Workflow> enable(UUID id) {
+        return jdbc.sql("update workflow set enabled = true, updated_at = now() where id = :id returning *")
+                .param("id", id)
+                .query(rowMapper)
+                .optional();
+    }
+
     public Optional<Workflow> findById(UUID id) {
         return jdbc.sql("select * from workflow where id = :id")
                 .param("id", id)

@@ -59,6 +59,17 @@ public class WorkflowService {
         return disabled;
     }
 
+    public Optional<Workflow> enable(UUID id) {
+        try {
+            Optional<Workflow> enabled = workflows.enable(id);
+            enabled.ifPresent(w -> events.publishEvent(new WorkflowsChangedEvent()));
+            return enabled;
+        } catch (DuplicateKeyException e) {
+            throw new WorkflowConflictException(
+                    "an active workflow with this name already exists — rename or disable it first");
+        }
+    }
+
     public Optional<Workflow> findById(UUID id) {
         return workflows.findById(id);
     }

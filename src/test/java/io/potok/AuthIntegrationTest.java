@@ -51,5 +51,8 @@ class AuthIntegrationTest extends IntegrationTestBase {
         assertThat(postJson("/hooks/nothing-here", Map.of()).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(get("/actuator/health", null).getStatusCode()).isEqualTo(HttpStatus.OK);
+        // dashboard assets stay open
+        assertThat(rest.getForEntity("/", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(rest.getForEntity("/js/app.js", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 }

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Potok</title>
+    <link rel="stylesheet" href="/css/app.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🌊</text></svg>">
+</head>
+<body>
+<header class="topbar">
+    <a class="brand" href="#/">пот<span>о́</span>к</a>
+    <nav>
+        <a href="#/" data-nav="workflows">Workflows</a>
+        <a href="#/dlq" data-nav="dlq">DLQ <span id="dlq-badge" class="badge-count" hidden></span></a>
+    </nav>
+    <div class="topbar-right">
+        <span id="auth-indicator" class="muted" hidden>🔑</span>
+        <span id="refresh-dot" class="refresh-dot" title="auto-refresh"></span>
+    </div>
+</header>
+
+<main id="view"></main>
+
+<dialog id="key-dialog">
+    <form method="dialog" id="key-form">
+        <h2>API key</h2>
+        <p class="muted">This Potok instance requires an <code>X-API-Key</code>.</p>
+        <input id="key-input" type="password" placeholder="paste key" autocomplete="off" required>
+        <button type="submit">Unlock</button>
+    </form>
+</dialog>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

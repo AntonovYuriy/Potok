@@ -45,13 +45,15 @@ public class ExecutionRepository {
                 .optional();
     }
 
-    public List<WorkflowExecution> list(UUID workflowId) {
+    public List<WorkflowExecution> list(UUID workflowId, int page, int size) {
         StringBuilder sql = new StringBuilder("select * from workflow_execution");
         if (workflowId != null) {
             sql.append(" where workflow_id = :workflowId");
         }
-        sql.append(" order by created_at desc limit 100");
-        var spec = jdbc.sql(sql.toString());
+        sql.append(" order by created_at desc limit :limit offset :offset");
+        var spec = jdbc.sql(sql.toString())
+                .param("limit", size)
+                .param("offset", (long) page * size);
         if (workflowId != null) {
             spec = spec.param("workflowId", workflowId);
         }

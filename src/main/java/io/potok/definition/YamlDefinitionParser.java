@@ -103,23 +103,74 @@ public class YamlDefinitionParser {
                 throw new InvalidDefinitionException("step '" + name + "': 'with' must be a mapping");
             }
             Object condition = stepMap.get("if");
-            Object maxAttempts = stepMap.get("max_attempts");
-            Integer maxAttemptsValue = null;
-            if (maxAttempts != null) {
-                if (!(maxAttempts instanceof Integer intValue) || intValue < 1) {
-                    throw new InvalidDefinitionException(
-                            "step '" + name + "': 'max_attempts' must be a positive integer");
-                }
-                maxAttemptsValue = intValue;
-            }
+            Integer maxAttemptsValue = positiveInt(name, "max_attempts", stepMap.get("max_attempts"));
             steps.add(new WorkflowDefinition.Step(
                     name,
                     action,
                     condition == null ? null : condition.toString(),
                     with == null ? null : (Map<String, Object>) with,
-                    maxAttemptsValue));
+                    maxAttemptsValue,
+                    parseRetry(name, stepMap.get("retry"))));
         }
         return steps;
+    }
+
+    private WorkflowDefinition.Retry parseRetry(String stepName, Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new InvalidDefinitionException("step '" + stepName + "': 'retry' must be a mapping");
+        }
+        return new WorkflowDefinition.Retry(
+                positiveInt(stepName, "retry.max_attempts", map.get("max_attempts")),
+                parseDuration(stepName, "retry.base_delay", map.get("base_delay")),
+                parseDuration(stepName, "retry.max_delay", map.get("max_delay")));
+    }
+
+    private static Integer positiveInt(String stepName, String field, Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (!(raw instanceof Integer intValue) || intValue < 1) {
+            throw new InvalidDefinitionException(
+                    "step '" + stepName + "': '" + field + "' must be a positive integer");
+        }
+        return intValue;
+    }
+
+    /** Accepts "500ms", "10s", "5m", "2h", a plain integer (seconds), or ISO-8601 ("PT10S"). */
+    static java.time.Duration parseDuration(String stepName, String field, Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        java.time.Duration parsed = null;
+        if (raw instanceof Integer seconds && seconds > 0) {
+            parsed = java.time.Duration.ofSeconds(seconds);
+        } else {
+            String text = raw.toString().trim();
+            var matcher = java.util.regex.Pattern.compile("(\\d+)(ms|s|m|h)").matcher(text);
+            if (matcher.matches()) {
+                long amount = Long.parseLong(matcher.group(1));
+                parsed = switch (matcher.group(2)) {
+                    case "ms" -> java.time.Duration.ofMillis(amount);
+                    case "s" -> java.time.Duration.ofSeconds(amount);
+                    case "m" -> java.time.Duration.ofMinutes(amount);
+                    default -> java.time.Duration.ofHours(amount);
+                };
+            } else {
+                try {
+                    parsed = java.time.Duration.parse(text);
+                } catch (java.time.format.DateTimeParseException ignored) {
+                    // handled below
+                }
+            }
+        }
+        if (parsed == null || parsed.isNegative() || parsed.isZero()) {
+            throw new InvalidDefinitionException("step '" + stepName + "': '" + field
+                    + "' must be a positive duration like \"10s\", \"5m\" or \"PT10S\"");
+        }
+        return parsed;
     }
 
     /** Spring cron needs 6 fields (with seconds); classic 5-field crontab specs get a leading "0". */

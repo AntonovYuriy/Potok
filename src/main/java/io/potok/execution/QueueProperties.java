@@ -9,6 +9,8 @@ public record QueueProperties(
         int workers,
         Duration pollInterval,
         Duration lockTimeout,
-        Duration retryBackoff,
-        int defaultMaxAttempts) {
+        Duration retryBaseDelay,
+        Duration retryMaxDelay,
+        int defaultMaxAttempts,
+        Duration shutdownGrace) {
 }

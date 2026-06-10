@@ -53,6 +53,55 @@ class YamlDefinitionParserTest {
     }
 
     @Test
+    void parsesRetryBlock() {
+        WorkflowDefinition definition = parser.parse("""
+                name: retry-block
+                trigger:
+                  webhook: { path: "r" }
+                steps:
+                  - name: fetch
+                    action: http
+                    retry:
+                      max_attempts: 7
+                      base_delay: 5s
+                      max_delay: 2m
+                """);
+
+        WorkflowDefinition.Retry retry = definition.steps().get(0).retry();
+        assertThat(retry.maxAttempts()).isEqualTo(7);
+        assertThat(retry.baseDelay()).isEqualTo(java.time.Duration.ofSeconds(5));
+        assertThat(retry.maxDelay()).isEqualTo(java.time.Duration.ofMinutes(2));
+        assertThat(definition.steps().get(0).effectiveMaxAttempts()).isEqualTo(7);
+    }
+
+    @Test
+    void parsesDurationFormats() {
+        assertThat(YamlDefinitionParser.parseDuration("s", "f", "500ms"))
+                .isEqualTo(java.time.Duration.ofMillis(500));
+        assertThat(YamlDefinitionParser.parseDuration("s", "f", 30))
+                .isEqualTo(java.time.Duration.ofSeconds(30));
+        assertThat(YamlDefinitionParser.parseDuration("s", "f", "2h"))
+                .isEqualTo(java.time.Duration.ofHours(2));
+        assertThat(YamlDefinitionParser.parseDuration("s", "f", "PT10S"))
+                .isEqualTo(java.time.Duration.ofSeconds(10));
+    }
+
+    @Test
+    void rejectsInvalidRetryDelay() {
+        assertThatThrownBy(() -> parser.parse("""
+                name: x
+                trigger:
+                  webhook: { path: "x" }
+                steps:
+                  - name: a
+                    action: http
+                    retry: { base_delay: "soon" }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("base_delay");
+    }
+
+    @Test
     void parsesMaxAttempts() {
         WorkflowDefinition definition = parser.parse("""
                 name: retry

@@ -26,6 +26,15 @@ function promptForKey() {
     });
 }
 
+/** POST/PUT raw YAML; server replies JSON (or problem+json on validation errors). */
+export function apiYaml(path, method, yamlText) {
+    return api(path, {
+        method,
+        headers: { 'Content-Type': 'text/plain' },
+        body: yamlText,
+    });
+}
+
 export async function api(path, options = {}) {
     const headers = { ...(options.headers || {}) };
     const key = sessionStorage.getItem('potok-api-key');

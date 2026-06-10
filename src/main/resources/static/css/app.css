@@ -178,6 +178,63 @@ dialog input {
 
 .toolbar { display: flex; gap: .5rem; margin: .5rem 0 1rem; align-items: center; }
 
+.editor-wrap {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--bg);
+    height: 60vh;
+}
+.editor-wrap .gutter {
+    margin: 0;
+    padding: .75rem .5rem;
+    text-align: right;
+    color: var(--muted);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: .85rem;
+    line-height: 1.5;
+    overflow: hidden;
+    user-select: none;
+    min-width: 2.5rem;
+}
+.editor-wrap textarea {
+    flex: 1;
+    padding: .75rem;
+    background: var(--bg);
+    color: var(--text);
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: var(--mono);
+    font-size: .85rem;
+    line-height: 1.5;
+    white-space: pre;
+}
+.editor-error {
+    background: color-mix(in srgb, var(--fail) 12%, var(--surface));
+    border: 1px solid var(--fail);
+    border-radius: var(--radius);
+    color: var(--fail);
+    font-family: var(--mono);
+    font-size: .85rem;
+    padding: .6rem 1rem;
+    margin-top: .75rem;
+    white-space: pre-wrap;
+}
+a.btn { text-decoration: none; display: inline-block; }
+.version summary { cursor: pointer; display: flex; gap: .75rem; align-items: center; padding: .35rem 0; }
+.version pre { margin: .5rem 0; }
+.toolbar input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: .35rem .7rem;
+}
+
 .flash {
     background: color-mix(in srgb, var(--warn) 15%, var(--surface));
     border: 1px solid var(--warn);

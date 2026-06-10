@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: potok
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/potok}
+    username: ${DB_USER:potok}
+    password: ${DB_PASSWORD:potok}
+  flyway:
+    enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+potok:
+  queue:
+    workers: ${POTOK_QUEUE_WORKERS:2}
+    poll-interval: ${POTOK_QUEUE_POLL_INTERVAL:PT1S}
+    lock-timeout: ${POTOK_QUEUE_LOCK_TIMEOUT:PT60S}
+    retry-backoff: ${POTOK_QUEUE_RETRY_BACKOFF:PT30S}
+    default-max-attempts: ${POTOK_QUEUE_DEFAULT_MAX_ATTEMPTS:3}
+  cron:
+    refresh-interval: ${POTOK_CRON_REFRESH_INTERVAL:PT30S}
+  telegram:
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    api-base: ${POTOK_TELEGRAM_API_BASE:https://api.telegram.org}

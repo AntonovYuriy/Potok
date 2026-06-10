@@ -84,8 +84,11 @@ public class PollerScheduler {
                 }
                 existing.future().cancel(false);
             }
+            // explicit start time: first poll runs immediately (deterministic baseline),
+            // then every interval — scheduleWithFixedDelay(task, interval) alone would
+            // wait a full interval before the first run
             ScheduledFuture<?> future = taskScheduler.scheduleWithFixedDelay(
-                    () -> tick(workflow.id()), interval);
+                    () -> tick(workflow.id()), java.time.Instant.now(), interval);
             registrations.put(workflow.id(), new Registration(interval, kind, future));
             log.info("poller_scheduled workflowId={} workflow={} kind={} interval={}",
                     workflow.id(), workflow.name(), kind, interval);

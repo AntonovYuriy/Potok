@@ -87,6 +87,37 @@ class YamlDefinitionParserTest {
     }
 
     @Test
+    void rejectsMalformedStepCondition() {
+        assertThatThrownBy(() -> parser.parse("""
+                name: x
+                trigger:
+                  webhook: { path: "x" }
+                steps:
+                  - { name: f, action: http }
+                  - { name: g, action: http, needs: [f], if: "{{ steps.f.status == 200 && }}" }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("step 'g'")
+                .hasMessageContaining("invalid condition");
+    }
+
+    @Test
+    void rejectsMalformedFireWhen() {
+        assertThatThrownBy(() -> parser.parse("""
+                name: x
+                trigger:
+                  poll:
+                    interval: 5m
+                    http: { url: "https://x" }
+                    fire_when: "{{ (body.price < 100 }}"
+                steps:
+                  - { name: f, action: http }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("fire_when");
+    }
+
+    @Test
     void rejectsInvalidRetryDelay() {
         assertThatThrownBy(() -> parser.parse("""
                 name: x

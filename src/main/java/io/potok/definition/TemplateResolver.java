@@ -105,10 +105,51 @@ public class TemplateResolver {
         if (expr.isEmpty()) {
             throw new IllegalArgumentException("empty operand in condition");
         }
-        if (expr.charAt(0) == '(' && closingParen(expr, 0) == expr.length() - 1) {
-            return evaluateOr(expr.substring(1, expr.length() - 1).trim(), context);
+        if (expr.charAt(0) == '(') {
+            int close = closingParen(expr, 0);
+            if (close == expr.length() - 1) {
+                return evaluateOr(expr.substring(1, expr.length() - 1).trim(), context);
+            }
+            if (close < 0) {
+                throw new IllegalArgumentException("unbalanced parentheses in condition");
+            }
         }
         return evaluateComparison(expr, context);
+    }
+
+    /**
+     * Pure syntax check for create/update-time validation — walks every
+     * operand (no evaluation, no short-circuiting) and throws
+     * IllegalArgumentException on malformed input like "a == 1 &&" or "(a".
+     */
+    public void validateConditionSyntax(String expression) {
+        String expr = expression.trim();
+        Matcher wrapped = SINGLE_EXPRESSION.matcher(expr);
+        if (wrapped.matches()) {
+            expr = wrapped.group(1).trim();
+        }
+        validateBooleanSyntax(expr);
+    }
+
+    private void validateBooleanSyntax(String expr) {
+        for (String orPart : splitTopLevel(expr, "||")) {
+            for (String andPart : splitTopLevel(orPart, "&&")) {
+                String unit = andPart.trim();
+                if (unit.isEmpty()) {
+                    throw new IllegalArgumentException("empty operand in condition");
+                }
+                if (unit.charAt(0) == '(') {
+                    int close = closingParen(unit, 0);
+                    if (close == unit.length() - 1) {
+                        validateBooleanSyntax(unit.substring(1, unit.length() - 1).trim());
+                        continue;
+                    }
+                    if (close < 0) {
+                        throw new IllegalArgumentException("unbalanced parentheses in condition");
+                    }
+                }
+            }
+        }
     }
 
     /** Splits on the operator at paren depth 0, outside quotes; single part = no operator. */

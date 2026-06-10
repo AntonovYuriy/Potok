@@ -13,7 +13,3 @@ node_modules/
 .env
 .env.*
 !.env.example
-
-# local editor/assistant config
-.local-tooling/
-conventions.md

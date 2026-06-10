@@ -3,6 +3,7 @@ package io.potok.definition;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -29,7 +30,24 @@ public record WorkflowDefinition(
             String action,
             @JsonProperty("if") String condition,
             Map<String, Object> with,
-            @JsonProperty("max_attempts") Integer maxAttempts) {
+            @JsonProperty("max_attempts") Integer maxAttempts,
+            Retry retry) {
+
+        /** Effective max attempts: retry block wins over the legacy top-level field. */
+        public Integer effectiveMaxAttempts() {
+            if (retry != null && retry.maxAttempts() != null) {
+                return retry.maxAttempts();
+            }
+            return maxAttempts;
+        }
+    }
+
+    /** Per-step retry overrides; null fields fall back to engine defaults. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Retry(
+            @JsonProperty("max_attempts") Integer maxAttempts,
+            @JsonProperty("base_delay") Duration baseDelay,
+            @JsonProperty("max_delay") Duration maxDelay) {
     }
 
     public Step step(String stepName) {

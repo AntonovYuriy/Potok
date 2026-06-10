@@ -10,8 +10,11 @@ import io.potok.definition.WorkflowDefinition;
 import io.potok.definition.WorkflowRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -24,7 +27,10 @@ import java.util.UUID;
  * Deliberately NOT transactional around the action call — actions do external
  * I/O, so the only guard while they run is the job_queue lease (locked_until).
  * That yields at-least-once semantics; re-deliveries of already-SUCCEEDED
- * steps are skipped, which is the idempotency contract of M1.
+ * steps are skipped, which is the idempotency contract.
+ *
+ * Retry exhaustion moves the job to the dead_letter table (full context
+ * snapshot) before failing the execution; /api/dlq can requeue it later.
  */
 @Component
 public class JobProcessor {
@@ -35,27 +41,46 @@ public class JobProcessor {
     private final ExecutionRepository executions;
     private final StepExecutionRepository steps;
     private final JobQueueRepository jobQueue;
+    private final DeadLetterRepository deadLetters;
     private final ActionRegistry actions;
     private final TemplateResolver templates;
     private final RetryPolicy retryPolicy;
+    private final PotokMetrics metrics;
+    private final ApplicationEventPublisher events;
 
     public JobProcessor(WorkflowRepository workflows,
                         ExecutionRepository executions,
                         StepExecutionRepository steps,
                         JobQueueRepository jobQueue,
+                        DeadLetterRepository deadLetters,
                         ActionRegistry actions,
                         TemplateResolver templates,
-                        RetryPolicy retryPolicy) {
+                        RetryPolicy retryPolicy,
+                        PotokMetrics metrics,
+                        ApplicationEventPublisher events) {
         this.workflows = workflows;
         this.executions = executions;
         this.steps = steps;
         this.jobQueue = jobQueue;
+        this.deadLetters = deadLetters;
         this.actions = actions;
         this.templates = templates;
         this.retryPolicy = retryPolicy;
+        this.metrics = metrics;
+        this.events = events;
     }
 
     public void process(QueuedJob job) {
+        MDC.put("execution_id", job.executionId().toString());
+        try {
+            doProcess(job);
+        } finally {
+            MDC.remove("execution_id");
+            MDC.remove("workflow_name");
+        }
+    }
+
+    private void doProcess(QueuedJob job) {
         Optional<WorkflowExecution> executionFound = executions.findById(job.executionId());
         if (executionFound.isEmpty()) {
             log.warn("job_dropped jobId={} reason=execution_missing", job.id());
@@ -74,6 +99,7 @@ public class JobProcessor {
             return;
         }
         Workflow workflow = workflowFound.get();
+        MDC.put("workflow_name", workflow.name());
         WorkflowDefinition.Step step = workflow.definition().step(job.stepName());
         if (step == null) {
             failExecution(job, execution.id(), "step '" + job.stepName() + "' not found in definition");
@@ -114,8 +140,10 @@ public class JobProcessor {
                 : (Map<String, Object>) templates.resolve(step.with(), context);
         steps.markRunning(execution.id(), step.name(), attempt, input);
 
+        Instant startedAt = Instant.now();
         StepResult result = executeSafely(handler,
                 new StepContext(execution.id(), workflow.name(), step.name(), input, attempt));
+        metrics.stepExecuted(step.action(), Duration.between(startedAt, Instant.now()), result.success());
 
         if (result.success()) {
             steps.markSucceeded(execution.id(), step.name(),
@@ -126,17 +154,31 @@ public class JobProcessor {
         }
 
         if (retryPolicy.shouldRetry(attempt, step)) {
-            Instant nextRun = retryPolicy.nextRunAt(Instant.now());
+            Instant nextRun = retryPolicy.nextRunAt(Instant.now(), attempt, step);
             steps.markFailed(execution.id(), step.name(), result.error(), false);
             jobQueue.scheduleRetry(job.id(), nextRun);
-            log.warn("step_retry executionId={} step={} attempt={}/{} error={}",
-                    execution.id(), step.name(), attempt, retryPolicy.maxAttempts(step), result.error());
+            metrics.stepRetried();
+            log.warn("step_retry executionId={} step={} attempt={}/{} nextRunAt={} error={}",
+                    execution.id(), step.name(), attempt, retryPolicy.maxAttempts(step), nextRun, result.error());
         } else {
             steps.markFailed(execution.id(), step.name(), result.error(), true);
+            deadLetter(job, workflow, execution, step, attempt, result.error(), input);
             failExecution(job, execution.id(), result.error());
             log.warn("step_failed executionId={} step={} attempts={} error={}",
                     execution.id(), step.name(), attempt, result.error());
         }
+    }
+
+    private void deadLetter(QueuedJob job, Workflow workflow, WorkflowExecution execution,
+                            WorkflowDefinition.Step step, int attempts, String error,
+                            Map<String, Object> input) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("input", input);
+        payload.put("trigger_info", execution.triggerInfo());
+        deadLetters.insert(execution.id(), step.name(), attempts, error, payload);
+        metrics.deadLettered();
+        events.publishEvent(new DeadLetteredEvent(execution.id(), workflow.name(), step.name(), error));
+        log.warn("job_dead_lettered executionId={} step={} attempts={}", execution.id(), step.name(), attempts);
     }
 
     /** Step finished (succeeded or skipped): enqueue the next one or finish the execution. */
@@ -146,6 +188,7 @@ public class JobProcessor {
             jobQueue.enqueue(executionId, next.name(), Instant.now());
         } else {
             executions.markFinished(executionId, ExecutionStatus.SUCCEEDED);
+            metrics.executionSucceeded();
             log.info("execution_succeeded executionId={} workflow={}", executionId, workflow.name());
         }
         jobQueue.delete(job.id());
@@ -153,6 +196,7 @@ public class JobProcessor {
 
     private void failExecution(QueuedJob job, UUID executionId, String reason) {
         executions.markFinished(executionId, ExecutionStatus.FAILED);
+        metrics.executionFailed();
         jobQueue.delete(job.id());
         log.warn("execution_failed executionId={} reason={}", executionId, reason);
     }

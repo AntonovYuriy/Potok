@@ -56,7 +56,9 @@ public abstract class IntegrationTestBase {
         registry.add("potok.telegram.api-base", WIRE_MOCK::baseUrl);
         registry.add("potok.telegram.bot-token", () -> "test-token");
         registry.add("potok.queue.poll-interval", () -> "PT0.1S");
-        registry.add("potok.queue.retry-backoff", () -> "PT0.2S");
+        // tiny deterministic-ish retry delays so retry scenarios finish fast
+        registry.add("potok.queue.retry-base-delay", () -> "PT0.05S");
+        registry.add("potok.queue.retry-max-delay", () -> "PT0.2S");
         registry.add("potok.cron.refresh-interval", () -> "PT1H");
     }
 

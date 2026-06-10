@@ -1,14 +1,8 @@
 package io.potok.action;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -18,15 +12,10 @@ import java.util.Map;
 @Component
 public class TelegramActionHandler implements ActionHandler {
 
-    private final HttpClient client = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
-    private final ObjectMapper objectMapper;
-    private final TelegramProperties properties;
+    private final TelegramClient telegram;
 
-    public TelegramActionHandler(ObjectMapper objectMapper, TelegramProperties properties) {
-        this.objectMapper = objectMapper;
-        this.properties = properties;
+    public TelegramActionHandler(TelegramClient telegram) {
+        this.telegram = telegram;
     }
 
     @Override
@@ -36,7 +25,7 @@ public class TelegramActionHandler implements ActionHandler {
 
     @Override
     public StepResult execute(StepContext ctx) {
-        if (properties.botToken() == null || properties.botToken().isBlank()) {
+        if (!telegram.isConfigured()) {
             return StepResult.fail(
                     "telegram action requires the TELEGRAM_BOT_TOKEN environment variable; "
                             + "set it (and TELEGRAM_CHAT_ID for the examples) or remove the telegram step");
@@ -50,22 +39,8 @@ public class TelegramActionHandler implements ActionHandler {
             return StepResult.fail(e.getMessage());
         }
 
-        String payload;
         try {
-            payload = objectMapper.writeValueAsString(Map.of("chat_id", chatId, "text", text));
-        } catch (JsonProcessingException e) {
-            return StepResult.fail("failed to serialize telegram payload: " + e.getMessage());
-        }
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(properties.apiBase() + "/bot" + properties.botToken() + "/sendMessage"))
-                .timeout(Duration.ofSeconds(30))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(payload))
-                .build();
-
-        try {
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = telegram.sendMessage(chatId, text);
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 return StepResult.ok(Map.of("status", response.statusCode(), "chat_id", chatId));
             }

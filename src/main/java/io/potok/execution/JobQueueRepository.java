@@ -67,6 +67,13 @@ public class JobQueueRepository {
         jdbc.sql("delete from job_queue where id = :id").param("id", jobId).update();
     }
 
+    /** Drops the lease so another worker/instance can claim the job immediately (graceful shutdown). */
+    public void releaseLock(long jobId) {
+        jdbc.sql("update job_queue set locked_until = now() where id = :id")
+                .param("id", jobId)
+                .update();
+    }
+
     /** Releases the job for a retry: bumps attempts, clears the lease, defers to {@code runAt}. */
     public void scheduleRetry(long jobId, Instant runAt) {
         jdbc.sql("""

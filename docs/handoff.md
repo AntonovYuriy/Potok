@@ -1,13 +1,39 @@
 # Handoff
 
+_Last updated: 2026-06-10._
+
 ## Current state
 
 - **M0 done**: repo + skills bootstrapped (ECC, agent-scripts), project conventions in `conventions.md`, remote `git@github.com:AntonovYuriy/Potok.git` configured, `.env.example` and `.gitignore` in place.
-- Existing code already covers scaffold, YAML definition + Flyway V1, Postgres SKIP LOCKED job queue + action SPI, REST control plane, webhook + cron triggers (see `git log`).
+- **M1 done** — complete, tested MVP:
+  - YAML definitions (GitHub-Actions style) with validation; minimal `{{ }}` templating (dot-path, `==`/`!=`, `${ENV}`).
+  - Triggers: cron (DB-driven, hot-reload on change event + 30s refresh) and webhook `POST /hooks/{path}`.
+  - Execution: Postgres `job_queue` polled with `FOR UPDATE SKIP LOCKED` by virtual-thread workers; `locked_until` lease = implicit crash recovery (no startup sweep); at-least-once with idempotent steps (SUCCEEDED never re-runs); per-step `max_attempts` (default 3), fixed 30s backoff.
+  - Actions SPI (Spring beans): `http` (with `fail_on_status: false` for the healthcheck pattern), `telegram` (graceful failure without token, base URL configurable for tests).
+  - REST API per spec, problem+json errors, soft delete. No auth (M4).
+  - Tests green (`./gradlew test`, 45): unit (parser/templating/retry) + Testcontainers integration (happy path, condition skip, healthcheck pattern, retry→FAILED, SKIP LOCKED 2-worker no-double-execution, API errors).
+  - Docker: multi-stage Dockerfile (temurin, `-XX:MaxRAMPercentage=75`), compose app+postgres16, health on `/actuator/health`.
+  - `examples/garbage-reminder.yaml`, `examples/healthcheck.yaml`; README with quickstart/YAML/API/architecture/roadmap; `docs/roadmap.md` M2-M4.
 
-## Next: M1
+## Key design decisions
 
-TBD — fill in scope before starting.
+- Plain JDBC (`JdbcClient`), no JPA — queue needs raw SQL; jsonb via `::jsonb`.
+- Action runs OUTSIDE transactions (external I/O); only the queue lease guards it. Steps that outlive the 60s lease may double-deliver — documented at-least-once contract.
+- Linearity is isolated in `JobProcessor.advance` + `WorkflowDefinition.nextStep` — the M2 DAG change replaces only these.
+- Templating context: `{trigger: <payload>, steps: {name: output}}`; `${ENV}` resolved at execution time, never stored.
+- 5-field cron specs get a leading `0` (`YamlDefinitionParser.normalizeCron`); fire-time re-check of `enabled`.
+
+## Machine notes (this dev box)
+
+- colima + brew docker CLI 29. Testcontainers: `~/.testcontainers.properties` points `docker.host` at the colima socket; build.gradle.kts sets `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` (portable).
+- `~/.docker/cli-plugins/docker-buildx` is stale v0.10.0 → `docker compose build` fails (needs ≥0.17). Workaround: `DOCKER_BUILDKIT=0 docker build -t potok-app . && docker compose up -d --no-build`. Proper fix: `brew install docker-buildx` and symlink into `~/.docker/cli-plugins/`.
+- Integration tests give each Spring context its own database (cached contexts keep workers polling — they'd steal jobs). Keep this pattern when adding test configs.
+
+## Next: M2 (see docs/roadmap.md)
+
+1. DAG: add `needs:` to `WorkflowDefinition.Step`; replace `JobProcessor.advance` with a dependency-aware scheduler (enqueue steps whose deps SUCCEEDED).
+2. Micrometer metrics (queue depth, step latency) before DAG debugging starts.
+3. Richer conditions (`&&`, `<`), more actions (slack, shell), per-step timeout.
 
 ## How to use this file
 

@@ -1,0 +1,20 @@
+# Every evening at 19:00: fetch the schedule and send a Telegram reminder.
+# Requires TELEGRAM_BOT_TOKEN (app env) and TELEGRAM_CHAT_ID (substituted below).
+name: garbage-reminder
+trigger:
+  cron: "0 19 * * *"
+steps:
+  - name: fetch
+    action: http
+    with:
+      method: GET
+      url: "https://www.muellabfuhr-deutschland.de/api/v1/schedule/next"
+      headers:
+        Accept: application/json
+
+  - name: notify
+    if: "{{ steps.fetch.status == 200 }}"
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "Завтра вывоз мусора: {{ steps.fetch.body }}"

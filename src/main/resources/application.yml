@@ -34,6 +34,7 @@ management:
           include: readinessState,db
 
 potok:
+  api-key: ${POTOK_API_KEY:}
   queue:
     workers: ${POTOK_QUEUE_WORKERS:2}
     poll-interval: ${POTOK_QUEUE_POLL_INTERVAL:PT1S}

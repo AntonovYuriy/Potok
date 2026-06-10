@@ -66,12 +66,103 @@ public class TemplateResolver {
 
     private static final String[] OPERATORS = {"==", "!=", ">=", "<=", ">", "<"};
 
+    /**
+     * Boolean grammar (top precedence first):
+     *   expr  := or
+     *   or    := and ('||' and)*
+     *   and   := unit ('&&' unit)*
+     *   unit  := '(' expr ')' | comparison | contains(...) | exists(...) | truthy-path
+     * '&&' binds tighter than '||'; parentheses group.
+     */
     public boolean evaluateCondition(String expression, Map<String, Object> context) {
         String expr = expression.trim();
         Matcher wrapped = SINGLE_EXPRESSION.matcher(expr);
         if (wrapped.matches()) {
             expr = wrapped.group(1).trim();
         }
+        return evaluateOr(expr, context);
+    }
+
+    private boolean evaluateOr(String expr, Map<String, Object> context) {
+        for (String part : splitTopLevel(expr, "||")) {
+            if (evaluateAnd(part.trim(), context)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean evaluateAnd(String expr, Map<String, Object> context) {
+        for (String part : splitTopLevel(expr, "&&")) {
+            if (!evaluateUnit(part.trim(), context)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean evaluateUnit(String expr, Map<String, Object> context) {
+        if (expr.isEmpty()) {
+            throw new IllegalArgumentException("empty operand in condition");
+        }
+        if (expr.charAt(0) == '(' && closingParen(expr, 0) == expr.length() - 1) {
+            return evaluateOr(expr.substring(1, expr.length() - 1).trim(), context);
+        }
+        return evaluateComparison(expr, context);
+    }
+
+    /** Splits on the operator at paren depth 0, outside quotes; single part = no operator. */
+    private static java.util.List<String> splitTopLevel(String expr, String operator) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        int depth = 0;
+        boolean inSingle = false;
+        boolean inDouble = false;
+        int start = 0;
+        for (int i = 0; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (c == '\'' && !inDouble) {
+                inSingle = !inSingle;
+            } else if (c == '"' && !inSingle) {
+                inDouble = !inDouble;
+            } else if (!inSingle && !inDouble) {
+                if (c == '(') {
+                    depth++;
+                } else if (c == ')') {
+                    depth--;
+                } else if (depth == 0 && expr.startsWith(operator, i)) {
+                    parts.add(expr.substring(start, i));
+                    i += operator.length() - 1;
+                    start = i + 1;
+                }
+            }
+        }
+        parts.add(expr.substring(start));
+        return parts;
+    }
+
+    /** Index of the ')' matching the '(' at {@code open}, or -1. */
+    private static int closingParen(String expr, int open) {
+        int depth = 0;
+        boolean inSingle = false;
+        boolean inDouble = false;
+        for (int i = open; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (c == '\'' && !inDouble) {
+                inSingle = !inSingle;
+            } else if (c == '"' && !inSingle) {
+                inDouble = !inDouble;
+            } else if (!inSingle && !inDouble) {
+                if (c == '(') {
+                    depth++;
+                } else if (c == ')' && --depth == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private boolean evaluateComparison(String expr, Map<String, Object> context) {
         if (expr.startsWith("contains(") && expr.endsWith(")")) {
             return evaluateContains(expr.substring("contains(".length(), expr.length() - 1), context);
         }

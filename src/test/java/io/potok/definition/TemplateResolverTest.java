@@ -143,6 +143,64 @@ class TemplateResolverTest {
     }
 
     @Test
+    void evaluatesAndOr() {
+        assertThat(resolver.evaluateCondition(
+                "{{ steps.fetch.status == 200 && trigger.user == 'yura' }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition(
+                "{{ steps.fetch.status == 500 && trigger.user == 'yura' }}", context)).isFalse();
+        assertThat(resolver.evaluateCondition(
+                "{{ steps.fetch.status == 500 || trigger.user == 'yura' }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition(
+                "{{ steps.fetch.status == 500 || trigger.user == 'nope' }}", context)).isFalse();
+    }
+
+    @Test
+    void andBindsTighterThanOr() {
+        // false || (true && true) -> true; ((false || true) && true) would also be true,
+        // so prove precedence with: true || x && false  => true (|| wins only if && grouped right)
+        assertThat(resolver.evaluateCondition(
+                "{{ trigger.user == 'yura' || trigger.user == 'x' && steps.fetch.status == 500 }}",
+                context)).isTrue();
+        // (a || b) && false -> false with explicit parens
+        assertThat(resolver.evaluateCondition(
+                "{{ (trigger.user == 'yura' || trigger.user == 'x') && steps.fetch.status == 500 }}",
+                context)).isFalse();
+    }
+
+    @Test
+    void parenthesesGroup() {
+        assertThat(resolver.evaluateCondition(
+                "{{ (steps.fetch.status == 200) }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition(
+                "{{ ((steps.fetch.status >= 200) && (steps.fetch.status < 300)) || trigger.user == 'x' }}",
+                context)).isTrue();
+    }
+
+    @Test
+    void functionsComposeWithBooleans() {
+        assertThat(resolver.evaluateCondition(
+                "{{ exists(trigger.user) && contains(trigger.items, 'a') }}", context)).isTrue();
+        assertThat(resolver.evaluateCondition(
+                "{{ exists(trigger.nope) || contains(steps.fetch.body.message, 'ok') }}", context)).isTrue();
+    }
+
+    @Test
+    void quotedOperatorsAreNotBooleanSplit() {
+        assertThat(resolver.evaluateCondition(
+                "{{ trigger.user == 'a && b' }}", context)).isFalse();
+        assertThat(resolver.evaluateCondition(
+                "{{ trigger.user == 'a || b' || trigger.user == 'yura' }}", context)).isTrue();
+    }
+
+    @Test
+    void emptyOperandThrows() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        resolver.evaluateCondition("{{ steps.fetch.status == 200 && }}", context))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("empty operand");
+    }
+
+    @Test
     void worksWithoutWrappingBraces() {
         assertThat(resolver.evaluateCondition("steps.fetch.status == 200", context)).isTrue();
     }

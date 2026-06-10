@@ -24,7 +24,7 @@ it stores definitions, execution state, *and* the job queue
 ```bash
 git clone <this repo> && cd potok
 docker compose up -d
-curl -s --data-binary @examples/healthcheck.yaml localhost:8080/api/workflows
+curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml localhost:8080/api/workflows
 ```
 
 App: `http://localhost:8080`, health: `/actuator/health`, Postgres: `:5432`.
@@ -35,7 +35,7 @@ token the step fails with a clear error message, nothing crashes.
 Trigger a run manually and inspect it:
 
 ```bash
-ID=$(curl -s --data-binary @examples/healthcheck.yaml localhost:8080/api/workflows | jq -r .id)
+ID=$(curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml localhost:8080/api/workflows | jq -r .id)
 EXEC=$(curl -s -X POST localhost:8080/api/workflows/$ID/run | jq -r .executionId)
 curl -s localhost:8080/api/executions/$EXEC | jq
 ```
@@ -104,7 +104,7 @@ A `with:` value that is exactly one `{{ … }}` keeps its original type
 
 | Method & path | Description |
 |---|---|
-| `POST /api/workflows` | create workflow; body = raw YAML; 201 + JSON |
+| `POST /api/workflows` | create workflow; body = raw YAML (`Content-Type: text/plain` or `application/yaml`); 201 + JSON |
 | `GET /api/workflows` | list workflows |
 | `GET /api/workflows/{id}` | one workflow with definition + YAML source |
 | `PUT /api/workflows/{id}` | replace definition (raw YAML body), re-enables |

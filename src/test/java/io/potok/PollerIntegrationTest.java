@@ -102,6 +102,38 @@ class PollerIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void firstPollRunsImmediatelyAfterCreate() {
+        WIRE_MOCK.stubFor(get(urlEqualTo("/ok")).willReturn(aResponse().withStatus(200)));
+        WIRE_MOCK.stubFor(get(urlEqualTo("/immediate"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"v\": 1}")));
+
+        // 1h interval: only an immediate first tick can establish the baseline fast
+        var created = postYaml("/api/workflows", """
+                name: poll-immediate
+                trigger:
+                  poll:
+                    interval: 1h
+                    http: { method: GET, url: "%s/immediate" }
+                    fire_when: "changed"
+                steps:
+                  - { name: noop, action: http, with: { url: "%s/ok", fail_on_status: false } }
+                """.formatted(WIRE_MOCK.baseUrl(), WIRE_MOCK.baseUrl()));
+        String workflowId = (String) created.getBody().get("id");
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(pollStateExists(workflowId)).isTrue());
+        // baseline never fires
+        assertThat(executionsOf(workflowId)).isEmpty();
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    io.potok.trigger.PollStateRepository pollStateRepository;
+
+    private boolean pollStateExists(String workflowId) {
+        return pollStateRepository.find(java.util.UUID.fromString(workflowId)).isPresent();
+    }
+
+    @Test
     void extractIgnoresNoisyBody() throws Exception {
         WIRE_MOCK.stubFor(get(urlEqualTo("/ok")).willReturn(aResponse().withStatus(200)));
         // noisy timestamp changes every call; price is stable

@@ -77,7 +77,7 @@ trigger:                           # exactly one of cron | webhook | poll | rss
   # webhook:
   #   path: "gh-events"            # → POST /hooks/gh-events
   #   hmac_secret_env: "GH_SECRET" # optional: require X-Hub-Signature-256 (see Security)
-  # poll:
+  # poll:                           # first poll runs immediately, then every interval
   #   interval: 5m
   #   http: { method: GET, url: "https://shop.example/api/item/42" }
   #   extract: { jsonpath: "$.price" }    # or { css: "span.price" } for HTML

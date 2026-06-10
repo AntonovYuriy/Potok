@@ -201,6 +201,18 @@ class TemplateResolverTest {
     }
 
     @Test
+    void validateConditionSyntaxCatchesMalformedInput() {
+        resolver.validateConditionSyntax("{{ steps.x.status == 200 && exists(trigger.a) }}"); // ok
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        resolver.validateConditionSyntax("{{ steps.x.status == 200 && }}"))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        resolver.validateConditionSyntax("{{ (steps.x.status == 200 }}"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("parentheses");
+    }
+
+    @Test
     void worksWithoutWrappingBraces() {
         assertThat(resolver.evaluateCondition("steps.fetch.status == 200", context)).isTrue();
     }

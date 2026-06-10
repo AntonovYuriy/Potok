@@ -19,6 +19,17 @@ import java.util.Set;
 @Component
 public class YamlDefinitionParser {
 
+    private final TemplateResolver conditionValidator;
+
+    public YamlDefinitionParser() {
+        this(new TemplateResolver());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public YamlDefinitionParser(TemplateResolver conditionValidator) {
+        this.conditionValidator = conditionValidator;
+    }
+
     public WorkflowDefinition parse(String yamlSource) {
         if (yamlSource == null || yamlSource.isBlank()) {
             throw new InvalidDefinitionException("definition is empty");
@@ -44,7 +55,31 @@ public class YamlDefinitionParser {
         WorkflowDefinition definition = new WorkflowDefinition(name, trigger, steps);
         validateNeeds(definition);
         validateTemplateReferences(definition);
+        validateConditions(definition);
         return definition;
+    }
+
+    /** Malformed conditions fail at create/update, not at execution time. */
+    private void validateConditions(WorkflowDefinition definition) {
+        for (WorkflowDefinition.Step step : definition.steps()) {
+            if (step.condition() != null) {
+                try {
+                    conditionValidator.validateConditionSyntax(step.condition());
+                } catch (IllegalArgumentException e) {
+                    throw new InvalidDefinitionException(
+                            "step '" + step.name() + "': invalid condition: " + e.getMessage());
+                }
+            }
+        }
+        WorkflowDefinition.Poll poll = definition.trigger().poll();
+        if (poll != null && !"changed".equals(poll.fireWhen())) {
+            try {
+                conditionValidator.validateConditionSyntax(poll.fireWhen());
+            } catch (IllegalArgumentException e) {
+                throw new InvalidDefinitionException(
+                        "'trigger.poll.fire_when': invalid condition: " + e.getMessage());
+            }
+        }
     }
 
     private void validateNeeds(WorkflowDefinition definition) {

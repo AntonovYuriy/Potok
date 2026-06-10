@@ -4,6 +4,7 @@ _Last updated: 2026-06-10 (M2 done + audited)._
 
 ## Current state
 
+- **Examples fix** (2026-06-10, PR #3, squash `6fc7129`): `garbage-reminder.yaml` now uses the real Warsaw waste API (warszawa19115.pl, addressPointId-keyed; no session cookie needed — verified live). Tomorrow-filter + fraction mapping live in the new `warsaw_waste` action — reference implementation of a custom ActionHandler. Telegram message only when something is collected tomorrow.
 - **M2 done — reliability, observability, CI/GHCR, deploy-ready** (2026-06-10, PR #2, squash `4896db4`):
   - Name reuse: partial unique index `workflow(name) WHERE enabled`; deleted names reusable, history intact.
   - Retry: exponential backoff + full jitter (base 10s, ×2, cap 10min); per-step `retry: {max_attempts, base_delay, max_delay}`; legacy `max_attempts` works.

@@ -18,10 +18,25 @@ public record WorkflowDefinition(
         List<Step> steps) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Trigger(String cron, Webhook webhook) {
+    public record Trigger(String cron, Webhook webhook, Poll poll, Rss rss) {
     }
 
     public record Webhook(String path) {
+    }
+
+    /**
+     * HTTP poller: {@code fire_when} is either the literal "changed" (fire when
+     * the response body hash changes) or a condition over the response
+     * ({@code {status, body, headers}}) that fires on false→true transitions.
+     */
+    public record Poll(
+            Duration interval,
+            Map<String, Object> http,
+            @JsonProperty("fire_when") String fireWhen) {
+    }
+
+    /** RSS/Atom poller: one execution per new feed item, deduped by guid/link. */
+    public record Rss(Duration interval, String url) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -31,7 +46,8 @@ public record WorkflowDefinition(
             @JsonProperty("if") String condition,
             Map<String, Object> with,
             @JsonProperty("max_attempts") Integer maxAttempts,
-            Retry retry) {
+            Retry retry,
+            List<String> needs) {
 
         /** Effective max attempts: retry block wins over the legacy top-level field. */
         public Integer effectiveMaxAttempts() {
@@ -40,6 +56,49 @@ public record WorkflowDefinition(
             }
             return maxAttempts;
         }
+    }
+
+    /**
+     * Dependencies of a step: explicit {@code needs}, or — backward compatible
+     * with linear M1/M2 workflows — the previous step in the list (first step
+     * has none).
+     */
+    public List<String> effectiveNeeds(String stepName) {
+        for (int i = 0; i < steps.size(); i++) {
+            if (steps.get(i).name().equals(stepName)) {
+                Step step = steps.get(i);
+                if (step.needs() != null) {
+                    return step.needs();
+                }
+                return i == 0 ? List.of() : List.of(steps.get(i - 1).name());
+            }
+        }
+        return List.of();
+    }
+
+    /** Steps with no dependencies — where an execution starts. */
+    public List<Step> rootSteps() {
+        return steps.stream().filter(s -> effectiveNeeds(s.name()).isEmpty()).toList();
+    }
+
+    /** All transitive dependencies of a step (the only outputs it may reference). */
+    public java.util.Set<String> needsClosure(String stepName) {
+        java.util.Set<String> closure = new java.util.LinkedHashSet<>();
+        java.util.Deque<String> queue = new java.util.ArrayDeque<>(effectiveNeeds(stepName));
+        while (!queue.isEmpty()) {
+            String current = queue.poll();
+            if (closure.add(current)) {
+                queue.addAll(effectiveNeeds(current));
+            }
+        }
+        return closure;
+    }
+
+    /** Steps that list the given step among their effective needs. */
+    public List<Step> dependents(String stepName) {
+        return steps.stream()
+                .filter(s -> effectiveNeeds(s.name()).contains(stepName))
+                .toList();
     }
 
     /** Per-step retry overrides; null fields fall back to engine defaults. */
@@ -57,13 +116,17 @@ public record WorkflowDefinition(
                 .orElse(null);
     }
 
-    /** Returns the step after the given one, or null when it is the last. */
-    public Step nextStep(String stepName) {
-        for (int i = 0; i < steps.size() - 1; i++) {
-            if (steps.get(i).name().equals(stepName)) {
-                return steps.get(i + 1);
+    /** Transitive dependents of a step — what a DLQ requeue needs to un-skip. */
+    public java.util.Set<String> downstreamClosure(String stepName) {
+        java.util.Set<String> closure = new java.util.LinkedHashSet<>();
+        java.util.Deque<String> queue = new java.util.ArrayDeque<>(List.of(stepName));
+        while (!queue.isEmpty()) {
+            for (Step dependent : dependents(queue.poll())) {
+                if (closure.add(dependent.name())) {
+                    queue.add(dependent.name());
+                }
             }
         }
-        return null;
+        return closure;
     }
 }

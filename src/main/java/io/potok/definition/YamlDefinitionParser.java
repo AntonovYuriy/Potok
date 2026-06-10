@@ -41,7 +41,106 @@ public class YamlDefinitionParser {
         WorkflowDefinition.Trigger trigger = parseTrigger(map.get("trigger"));
         List<WorkflowDefinition.Step> steps = parseSteps(map.get("steps"));
 
-        return new WorkflowDefinition(name, trigger, steps);
+        WorkflowDefinition definition = new WorkflowDefinition(name, trigger, steps);
+        validateNeeds(definition);
+        validateTemplateReferences(definition);
+        return definition;
+    }
+
+    private void validateNeeds(WorkflowDefinition definition) {
+        Set<String> names = new HashSet<>();
+        definition.steps().forEach(s -> names.add(s.name()));
+        for (WorkflowDefinition.Step step : definition.steps()) {
+            if (step.needs() == null) {
+                continue;
+            }
+            Set<String> seen = new HashSet<>();
+            for (String need : step.needs()) {
+                if (!names.contains(need)) {
+                    throw new InvalidDefinitionException(
+                            "step '" + step.name() + "': needs unknown step '" + need + "'");
+                }
+                if (need.equals(step.name())) {
+                    throw new InvalidDefinitionException(
+                            "step '" + step.name() + "': cannot depend on itself");
+                }
+                if (!seen.add(need)) {
+                    throw new InvalidDefinitionException(
+                            "step '" + step.name() + "': duplicate entry '" + need + "' in needs");
+                }
+            }
+        }
+        detectCycles(definition);
+    }
+
+    /** DFS with three colors; reports the offending path. */
+    private void detectCycles(WorkflowDefinition definition) {
+        Map<String, Integer> color = new java.util.HashMap<>(); // 0/absent=white, 1=gray, 2=black
+        for (WorkflowDefinition.Step step : definition.steps()) {
+            if (!color.containsKey(step.name())) {
+                dfsCycle(definition, step.name(), color, new java.util.ArrayDeque<>());
+            }
+        }
+    }
+
+    private void dfsCycle(WorkflowDefinition definition, String node,
+                          Map<String, Integer> color, java.util.Deque<String> path) {
+        color.put(node, 1);
+        path.push(node);
+        for (String need : definition.effectiveNeeds(node)) {
+            Integer c = color.get(need);
+            if (c != null && c == 1) {
+                List<String> cycle = new java.util.ArrayList<>(path);
+                java.util.Collections.reverse(cycle);
+                cycle.add(need);
+                throw new InvalidDefinitionException(
+                        "dependency cycle detected: " + String.join(" -> ", cycle));
+            }
+            if (c == null) {
+                dfsCycle(definition, need, color, path);
+            }
+        }
+        path.pop();
+        color.put(node, 2);
+    }
+
+    private static final java.util.regex.Pattern STEP_REF =
+            java.util.regex.Pattern.compile("steps\\.([A-Za-z0-9_-]+)");
+
+    /** A step may only reference outputs of steps it (transitively) depends on. */
+    private void validateTemplateReferences(WorkflowDefinition definition) {
+        for (WorkflowDefinition.Step step : definition.steps()) {
+            Set<String> allowed = definition.needsClosure(step.name());
+            Set<String> referenced = new java.util.LinkedHashSet<>();
+            if (step.condition() != null) {
+                collectStepRefs(step.condition(), referenced);
+            }
+            collectStepRefsDeep(step.with(), referenced);
+            for (String ref : referenced) {
+                if (!allowed.contains(ref)) {
+                    throw new InvalidDefinitionException(
+                            "step '" + step.name() + "': references steps." + ref
+                                    + " but does not depend on it — add '" + ref + "' to needs");
+                }
+            }
+        }
+    }
+
+    private void collectStepRefsDeep(Object value, Set<String> out) {
+        if (value instanceof String s) {
+            collectStepRefs(s, out);
+        } else if (value instanceof Map<?, ?> map) {
+            map.values().forEach(v -> collectStepRefsDeep(v, out));
+        } else if (value instanceof List<?> list) {
+            list.forEach(v -> collectStepRefsDeep(v, out));
+        }
+    }
+
+    private void collectStepRefs(String text, Set<String> out) {
+        var matcher = STEP_REF.matcher(text);
+        while (matcher.find()) {
+            out.add(matcher.group(1));
+        }
     }
 
     private WorkflowDefinition.Trigger parseTrigger(Object raw) {
@@ -50,8 +149,12 @@ public class YamlDefinitionParser {
         }
         Object cron = map.get("cron");
         Object webhook = map.get("webhook");
-        if ((cron == null) == (webhook == null)) {
-            throw new InvalidDefinitionException("'trigger' must define exactly one of 'cron' or 'webhook'");
+        Object poll = map.get("poll");
+        Object rss = map.get("rss");
+        long defined = java.util.stream.Stream.of(cron, webhook, poll, rss).filter(java.util.Objects::nonNull).count();
+        if (defined != 1) {
+            throw new InvalidDefinitionException(
+                    "'trigger' must define exactly one of 'cron', 'webhook', 'poll' or 'rss'");
         }
         if (cron != null) {
             String expr = cron.toString().trim();
@@ -60,20 +163,61 @@ public class YamlDefinitionParser {
             } catch (IllegalArgumentException e) {
                 throw new InvalidDefinitionException("invalid cron expression '" + expr + "': " + e.getMessage(), e);
             }
-            return new WorkflowDefinition.Trigger(expr, null);
+            return new WorkflowDefinition.Trigger(expr, null, null, null);
         }
-        if (!(webhook instanceof Map<?, ?> webhookMap)) {
-            throw new InvalidDefinitionException("'trigger.webhook' must be a mapping with a 'path'");
+        if (webhook != null) {
+            if (!(webhook instanceof Map<?, ?> webhookMap)) {
+                throw new InvalidDefinitionException("'trigger.webhook' must be a mapping with a 'path'");
+            }
+            String path = stringField(webhookMap, "path");
+            if (path == null || path.isBlank()) {
+                throw new InvalidDefinitionException("'trigger.webhook.path' is required");
+            }
+            if (!path.matches("[a-zA-Z0-9_-]+")) {
+                throw new InvalidDefinitionException(
+                        "'trigger.webhook.path' may only contain letters, digits, '-' and '_'");
+            }
+            return new WorkflowDefinition.Trigger(null, new WorkflowDefinition.Webhook(path), null, null);
         }
-        String path = stringField(webhookMap, "path");
-        if (path == null || path.isBlank()) {
-            throw new InvalidDefinitionException("'trigger.webhook.path' is required");
+        if (poll != null) {
+            return new WorkflowDefinition.Trigger(null, null, parsePoll(poll), null);
         }
-        if (!path.matches("[a-zA-Z0-9_-]+")) {
+        return new WorkflowDefinition.Trigger(null, null, null, parseRss(rss));
+    }
+
+    @SuppressWarnings("unchecked")
+    private WorkflowDefinition.Poll parsePoll(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new InvalidDefinitionException("'trigger.poll' must be a mapping");
+        }
+        java.time.Duration interval = parseDuration("trigger", "poll.interval", map.get("interval"));
+        if (interval == null) {
+            throw new InvalidDefinitionException("'trigger.poll.interval' is required");
+        }
+        if (!(map.get("http") instanceof Map<?, ?> http) || stringField(http, "url") == null) {
+            throw new InvalidDefinitionException("'trigger.poll.http' must be a mapping with a 'url'");
+        }
+        String fireWhen = stringField(map, "fire_when");
+        if (fireWhen == null || fireWhen.isBlank()) {
             throw new InvalidDefinitionException(
-                    "'trigger.webhook.path' may only contain letters, digits, '-' and '_'");
+                    "'trigger.poll.fire_when' is required: \"changed\" or a condition expression");
         }
-        return new WorkflowDefinition.Trigger(null, new WorkflowDefinition.Webhook(path));
+        return new WorkflowDefinition.Poll(interval, (Map<String, Object>) http, fireWhen.trim());
+    }
+
+    private WorkflowDefinition.Rss parseRss(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new InvalidDefinitionException("'trigger.rss' must be a mapping");
+        }
+        java.time.Duration interval = parseDuration("trigger", "rss.interval", map.get("interval"));
+        if (interval == null) {
+            throw new InvalidDefinitionException("'trigger.rss.interval' is required");
+        }
+        String url = stringField(map, "url");
+        if (url == null || url.isBlank()) {
+            throw new InvalidDefinitionException("'trigger.rss.url' is required");
+        }
+        return new WorkflowDefinition.Rss(interval, url);
     }
 
     @SuppressWarnings("unchecked")
@@ -110,9 +254,32 @@ public class YamlDefinitionParser {
                     condition == null ? null : condition.toString(),
                     with == null ? null : (Map<String, Object>) with,
                     maxAttemptsValue,
-                    parseRetry(name, stepMap.get("retry"))));
+                    parseRetry(name, stepMap.get("retry")),
+                    parseNeeds(name, stepMap.get("needs"))));
         }
         return steps;
+    }
+
+    private List<String> parseNeeds(String stepName, Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof String single) {
+            return List.of(single);
+        }
+        if (!(raw instanceof List<?> list)) {
+            throw new InvalidDefinitionException(
+                    "step '" + stepName + "': 'needs' must be a list of step names");
+        }
+        List<String> needs = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof String s) || s.isBlank()) {
+                throw new InvalidDefinitionException(
+                        "step '" + stepName + "': 'needs' entries must be step names");
+            }
+            needs.add(s);
+        }
+        return needs;
     }
 
     private WorkflowDefinition.Retry parseRetry(String stepName, Object raw) {

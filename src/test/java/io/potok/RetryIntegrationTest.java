@@ -49,10 +49,14 @@ class RetryIntegrationTest extends IntegrationTestBase {
 
         List<Map<String, Object>> steps =
                 (List<Map<String, Object>>) getExecution(executionId).get("steps");
-        assertThat(steps).hasSize(1);
+        // M3 DAG semantics: the failed step + its dependency-skipped downstream
+        assertThat(steps).hasSize(2);
         Map<String, Object> fetch = steps.get(0);
         assertThat(fetch.get("status")).isEqualTo("FAILED");
         assertThat(fetch.get("attempt")).isEqualTo(3);
         assertThat((String) fetch.get("error")).contains("500");
+        Map<String, Object> never = steps.get(1);
+        assertThat(never.get("status")).isEqualTo("SKIPPED");
+        assertThat((String) never.get("error")).contains("dependency failed: fetch");
     }
 }

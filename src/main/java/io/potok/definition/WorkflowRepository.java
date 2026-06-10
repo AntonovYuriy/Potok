@@ -61,6 +61,13 @@ public class WorkflowRepository {
                 .update() > 0;
     }
 
+    public Optional<Workflow> enable(UUID id) {
+        return jdbc.sql("update workflow set enabled = true, updated_at = now() where id = :id returning *")
+                .param("id", id)
+                .query(rowMapper)
+                .optional();
+    }
+
     public Optional<Workflow> findById(UUID id) {
         return jdbc.sql("select * from workflow where id = :id")
                 .param("id", id)
@@ -76,6 +83,16 @@ public class WorkflowRepository {
 
     public List<Workflow> findEnabledWithCron() {
         return jdbc.sql("select * from workflow where enabled and definition -> 'trigger' ->> 'cron' is not null")
+                .query(rowMapper)
+                .list();
+    }
+
+    public List<Workflow> findEnabledWithPollers() {
+        return jdbc.sql("""
+                        select * from workflow
+                        where enabled and (definition -> 'trigger' -> 'poll' is not null
+                                        or definition -> 'trigger' -> 'rss' is not null)
+                        """)
                 .query(rowMapper)
                 .list();
     }

@@ -45,13 +45,15 @@ public class ExecutionRepository {
                 .optional();
     }
 
-    public List<WorkflowExecution> list(UUID workflowId) {
+    public List<WorkflowExecution> list(UUID workflowId, int page, int size) {
         StringBuilder sql = new StringBuilder("select * from workflow_execution");
         if (workflowId != null) {
             sql.append(" where workflow_id = :workflowId");
         }
-        sql.append(" order by created_at desc limit 100");
-        var spec = jdbc.sql(sql.toString());
+        sql.append(" order by created_at desc limit :limit offset :offset");
+        var spec = jdbc.sql(sql.toString())
+                .param("limit", size)
+                .param("offset", (long) page * size);
         if (workflowId != null) {
             spec = spec.param("workflowId", workflowId);
         }
@@ -69,15 +71,16 @@ public class ExecutionRepository {
                 .update();
     }
 
-    public void markFinished(UUID id, ExecutionStatus status) {
-        jdbc.sql("""
+    /** @return true when this call performed the transition (guards double-finish from racing branches) */
+    public boolean markFinished(UUID id, ExecutionStatus status) {
+        return jdbc.sql("""
                         update workflow_execution
                         set status = :status, finished_at = now()
-                        where id = :id
+                        where id = :id and status in ('PENDING', 'RUNNING')
                         """)
                 .param("id", id)
                 .param("status", status.name())
-                .update();
+                .update() > 0;
     }
 
     private WorkflowExecution mapRow(ResultSet rs, int rowNum) throws SQLException {

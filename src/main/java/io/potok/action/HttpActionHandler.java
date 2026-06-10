@@ -90,7 +90,7 @@ public class HttpActionHandler implements ActionHandler {
             Thread.currentThread().interrupt();
             return StepResult.fail("http request interrupted");
         } catch (Exception e) {
-            return StepResult.fail("http " + method + " " + url + " failed: " + e.getMessage());
+            return StepResult.fail("http " + method + " " + url + " failed: " + io.potok.common.Errors.describe(e));
         }
     }
 

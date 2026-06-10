@@ -28,8 +28,12 @@ public class ExecutionController {
     }
 
     @GetMapping
-    public List<ExecutionResponse> list(@RequestParam(required = false) UUID workflowId) {
-        return executions.list(workflowId).stream()
+    public List<ExecutionResponse> list(
+            @RequestParam(required = false) UUID workflowId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        int boundedSize = Math.min(Math.max(size, 1), 200);
+        return executions.list(workflowId, Math.max(page, 0), boundedSize).stream()
                 .map(execution -> ExecutionResponse.from(execution, null))
                 .toList();
     }

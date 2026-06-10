@@ -68,6 +68,11 @@ public class WorkflowController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/enable")
+    public WorkflowResponse enable(@PathVariable UUID id) {
+        return workflowService.enable(id).map(WorkflowResponse::from).orElseThrow(() -> notFound(id));
+    }
+
     @PostMapping("/{id}/run")
     public ResponseEntity<Map<String, Object>> run(@PathVariable UUID id) {
         Workflow workflow = workflowService.findById(id).orElseThrow(() -> notFound(id));

@@ -51,7 +51,7 @@ public class TelegramActionHandler implements ActionHandler {
             Thread.currentThread().interrupt();
             return StepResult.fail("telegram request interrupted");
         } catch (Exception e) {
-            return StepResult.fail("telegram sendMessage failed: " + e.getMessage());
+            return StepResult.fail("telegram sendMessage failed: " + io.potok.common.Errors.describe(e));
         }
     }
 }

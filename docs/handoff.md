@@ -1,9 +1,17 @@
 # Handoff
 
-_Last updated: 2026-06-10 (M2 done + audited)._
+_Last updated: 2026-06-10 (M3 done)._
 
 ## Current state
 
+- **M3 done — auth, DAG, pollers, dashboard, hygiene** (2026-06-10, PR #4, squash `78803a7`, 94 tests):
+  - Auth: `POTOK_API_KEY` → `X-API-Key` on `/api/**` (401 problem+json); unset = off; `/api/meta` (public) reports `authRequired`.
+  - DAG: `needs:` per step (default = previous step, linear YAMLs unchanged); parallel ready steps; create-time validation (cycles, unknown needs, template refs limited to needs-closure); failure → downstream SKIPPED(`dependency failed: X`), independent branches finish, execution FAILED when graph terminal; condition-SKIPPED satisfies dependents; DLQ requeue un-skips downstream. Join dedupe: unique job_queue(execution_id, step_name) + ON CONFLICT.
+  - Conditions: `== != > < >= <= contains() exists()`.
+  - Pollers: `trigger.poll` (changed-hash | edge-triggered expression) and `trigger.rss` (per-item, guid/link dedupe, Rome). State in postgres (poll_state, rss_seen), fire+state one tx. Examples: coin-watcher, rss-digest.
+  - Dashboard at `/` from the jar (vanilla ES modules, no build step): workflows, YAML view, paged executions, step timeline, DLQ requeue/delete, run/enable/disable, API-key prompt, 7s polling. Screenshot: docs/dashboard.png.
+  - Hygiene: nightly retention purge (`POTOK_RETENTION_DAYS`=30, DLQ-referenced exempt, `potok_purged_total`); `Errors.describe()` — no more "failed: null"; logback janino WARN gone (two static configs via logging.config placeholder).
+  - Live-verified: auth 401/200, diamond DAG on postman-echo (branches overlapped, join after both), poller edge-trigger on mutable endpoint (baseline→fire once→no refire), UI screenshots via headless Chrome.
 - **Examples fix** (2026-06-10, PR #3, squash `6fc7129`): `garbage-reminder.yaml` now uses the real Warsaw waste API (warszawa19115.pl, addressPointId-keyed; no session cookie needed — verified live). Tomorrow-filter + fraction mapping live in the new `warsaw_waste` action — reference implementation of a custom ActionHandler. Telegram message only when something is collected tomorrow.
 - **M2 done — reliability, observability, CI/GHCR, deploy-ready** (2026-06-10, PR #2, squash `4896db4`):
   - Name reuse: partial unique index `workflow(name) WHERE enabled`; deleted names reusable, history intact.
@@ -34,10 +42,12 @@ _Last updated: 2026-06-10 (M2 done + audited)._
 - Templating context: `{trigger: <payload>, steps: {name: output}}`; `${ENV}` resolved at execution time, never stored.
 - 5-field cron specs get a leading `0` (`YamlDefinitionParser.normalizeCron`); fire-time re-check of `enabled`.
 
-## Known issues
+## Known issues / gaps
 
-- DLQ `lastError` shows "failed: null" for exceptions without a message (e.g. ConnectException) — cosmetic, fix in M3.
-- Cron triggers fire on every instance when scaled out — single instance until leader election (M3).
+- Cron AND poll/rss triggers fire on every instance when scaled out — single instance until leader election (M4+).
+- Dashboard: no YAML editing (M4); workflow list does N+1 last-run fetches (fine for small N).
+- Poll "changed" mode hashes the whole body — a timestamp field in the response = fire every poll; expression mode is the workaround.
+- `if:` supports one comparison — no `&&`/`||` yet.
 
 ## Verified 2026-06-10 (M1)
 
@@ -55,15 +65,16 @@ _Last updated: 2026-06-10 (M2 done + audited)._
 
 ## Next action
 
-**First deploy to Koyeb + Neon per docs/deploy.md — manual, by owner** (accounts, secrets, clicking). Code side is ready: GHCR image published, probes configured, 512MB verified.
+**First deploy to Koyeb + Neon per docs/deploy.md — manual, by owner** (accounts, secrets, clicking). Set `POTOK_API_KEY` — the instance gets a public URL.
 
-## M3 candidates (see docs/roadmap.md)
+## M4 candidates
 
-1. DAG execution: `needs:` between steps, parallel branches, richer conditions (`&&`/`||`, `<`/`>`, `contains`); replace `JobProcessor.advance` + `WorkflowDefinition.nextStep` — linearity is isolated there.
-2. Poller triggers: RSS / HTTP polling + diff as a trigger source.
-3. Executions TTL/archival: retention for workflow_execution / step_execution / dead_letter.
-4. Read-only web UI: workflow list, execution timeline, step inspector.
-5. Prettier DLQ error messages ("failed: null" cosmetics); cron leader election for multi-instance.
+1. YAML editor in the dashboard (create/update with validation feedback).
+2. Auth users/tokens: multiple API keys, scopes, token rotation; webhook signatures (HMAC).
+3. Workflow versioning (PUT history, rollback).
+4. Leader election for cron/pollers (multi-instance).
+5. `&&`/`||` in conditions; per-step timeouts.
+6. Autodeploy notes: Koyeb redeploy hook from GHCR `:latest` on merge (CI step), zero-downtime via readiness.
 
 ## How to use this file
 

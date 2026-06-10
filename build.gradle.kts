@@ -37,6 +37,9 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Path of the docker socket as seen by the docker daemon's host (VM for colima/Docker Desktop,
+    // the machine itself on Linux) — lets Ryuk mount it when DOCKER_HOST points to a user socket.
+    environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
     testLogging {
         events("passed", "skipped", "failed")
     }

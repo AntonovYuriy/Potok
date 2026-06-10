@@ -41,8 +41,14 @@ public class TelegramActionHandler implements ActionHandler {
                     "telegram action requires the TELEGRAM_BOT_TOKEN environment variable; "
                             + "set it (and TELEGRAM_CHAT_ID for the examples) or remove the telegram step");
         }
-        String chatId = ctx.requireString("chat_id");
-        String text = ctx.requireString("text");
+        String chatId;
+        String text;
+        try {
+            chatId = ctx.requireString("chat_id");
+            text = ctx.requireString("text");
+        } catch (IllegalArgumentException e) {
+            return StepResult.fail(e.getMessage());
+        }
 
         String payload;
         try {

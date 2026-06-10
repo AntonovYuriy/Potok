@@ -13,6 +13,7 @@ public class RetryPolicy {
     private final int defaultMaxAttempts;
     private final Duration backoff;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public RetryPolicy(QueueProperties properties) {
         this(properties.defaultMaxAttempts(), properties.retryBackoff());
     }

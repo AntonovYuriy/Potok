@@ -5,6 +5,7 @@ _Last updated: 2026-06-10._
 ## Current state
 
 - **M0 done**: repo + skills bootstrapped (ECC, agent-scripts), project conventions in `CLAUDE.md`, remote `git@github.com:AntonovYuriy/Potok.git` configured, `.env.example` and `.gitignore` in place.
+- **Config pass done** (2026-06-10): `.claude/settings.json` (project-level: `bypassPermissions` mode, empty attribution), CLAUDE.md git flow rewritten to feature-branch + automated PR-then-squash-merge (no human approval gate), and `main` history rewritten to strip prior co-author footers (force-pushed).
 - **M1 done** — complete, tested MVP:
   - YAML definitions (GitHub-Actions style) with validation; minimal `{{ }}` templating (dot-path, `==`/`!=`, `${ENV}`).
   - Triggers: cron (DB-driven, hot-reload on change event + 30s refresh) and webhook `POST /hooks/{path}`.

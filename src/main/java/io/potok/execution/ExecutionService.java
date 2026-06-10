@@ -16,10 +16,12 @@ public class ExecutionService {
 
     private final ExecutionRepository executions;
     private final JobQueueRepository jobQueue;
+    private final PotokMetrics metrics;
 
-    public ExecutionService(ExecutionRepository executions, JobQueueRepository jobQueue) {
+    public ExecutionService(ExecutionRepository executions, JobQueueRepository jobQueue, PotokMetrics metrics) {
         this.executions = executions;
         this.jobQueue = jobQueue;
+        this.metrics = metrics;
     }
 
     /**
@@ -31,6 +33,7 @@ public class ExecutionService {
         WorkflowExecution execution = executions.insert(workflow.id(), triggerInfo);
         String firstStep = workflow.definition().steps().get(0).name();
         jobQueue.enqueue(execution.id(), firstStep, Instant.now());
+        metrics.executionStarted();
         log.info("execution_started executionId={} workflow={} trigger={}",
                 execution.id(), workflow.name(), triggerInfo.get("type"));
         return execution;

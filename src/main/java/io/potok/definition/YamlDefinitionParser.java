@@ -177,7 +177,13 @@ public class YamlDefinitionParser {
                 throw new InvalidDefinitionException(
                         "'trigger.webhook.path' may only contain letters, digits, '-' and '_'");
             }
-            return new WorkflowDefinition.Trigger(null, new WorkflowDefinition.Webhook(path), null, null);
+            String hmacSecretEnv = stringField(webhookMap, "hmac_secret_env");
+            if (hmacSecretEnv != null && !hmacSecretEnv.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+                throw new InvalidDefinitionException(
+                        "'trigger.webhook.hmac_secret_env' must be an environment variable NAME");
+            }
+            return new WorkflowDefinition.Trigger(null,
+                    new WorkflowDefinition.Webhook(path, hmacSecretEnv), null, null);
         }
         if (poll != null) {
             return new WorkflowDefinition.Trigger(null, null, parsePoll(poll), null);

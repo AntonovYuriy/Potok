@@ -21,7 +21,13 @@ public record WorkflowDefinition(
     public record Trigger(String cron, Webhook webhook, Poll poll, Rss rss) {
     }
 
-    public record Webhook(String path) {
+    /**
+     * {@code hmacSecretEnv} names an ENVIRONMENT VARIABLE holding the shared
+     * secret — the secret itself never touches YAML or the database. When set,
+     * deliveries must carry a valid GitHub-style X-Hub-Signature-256 header.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Webhook(String path, @JsonProperty("hmac_secret_env") String hmacSecretEnv) {
     }
 
     /**

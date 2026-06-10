@@ -14,7 +14,9 @@ import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Static API key auth for the control plane (/api/**) via the X-API-Key header.
+ * API key auth for the control plane (/api/**) via the X-API-Key header.
+ * Accepted credentials: the bootstrap "root" key from POTOK_API_KEY, or any
+ * active row in api_token (matched by SHA-256, last_used_at stamped).
  * POTOK_API_KEY unset → filter inactive (local dev unchanged).
  * Open by design: /api/meta (UI bootstrap), /hooks/** (webhook trigger),
  * actuator and the dashboard static assets — none of them match /api/**.
@@ -25,13 +27,30 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     public static final String HEADER = "X-API-Key";
 
     private final String apiKey;
+    private final ApiTokenRepository tokens;
 
-    public ApiKeyAuthFilter(@Value("${potok.api-key:}") String apiKey) {
+    public ApiKeyAuthFilter(@Value("${potok.api-key:}") String apiKey, ApiTokenRepository tokens) {
         this.apiKey = apiKey == null ? "" : apiKey.trim();
+        this.tokens = tokens;
     }
 
     public boolean isEnabled() {
         return !apiKey.isEmpty();
+    }
+
+    /** Root key only — for admin endpoints stricter than regular token auth. */
+    public boolean isRootKey(String provided) {
+        return isEnabled() && provided != null && constantTimeEquals(provided, apiKey);
+    }
+
+    static String sha256Hex(String token) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
     }
 
     @Override
@@ -47,7 +66,8 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String provided = request.getHeader(HEADER);
-        if (provided != null && constantTimeEquals(provided, apiKey)) {
+        if (provided != null
+                && (constantTimeEquals(provided, apiKey) || tokens.useActiveToken(sha256Hex(provided)))) {
             filterChain.doFilter(request, response);
             return;
         }

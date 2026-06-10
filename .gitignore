@@ -14,4 +14,6 @@ node_modules/
 .env.*
 !.env.example
 
-.local-tooling/settings.local.json
+# local editor/assistant config
+.local-tooling/
+conventions.md

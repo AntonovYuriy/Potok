@@ -1,5 +1,7 @@
 # Potok
 
+[![ci](https://github.com/AntonovYuriy/Potok/actions/workflows/ci.yml/badge.svg)](https://github.com/AntonovYuriy/Potok/actions/workflows/ci.yml)
+
 Self-hosted workflow engine. Define workflows in YAML (GitHub-Actions style):
 a **trigger** (cron or webhook) starts a **linear chain of steps**, each step runs
 an **action** (HTTP call, Telegram message). PostgreSQL is the only dependency —
@@ -52,7 +54,10 @@ trigger:                        # exactly one of cron | webhook (required)
 steps:                          # ordered, executed strictly in sequence
   - name: fetch                 # unique step name (required)
     action: http                # action type (required)
-    max_attempts: 3             # optional, default 3; fixed 30s backoff between attempts
+    retry:                      # optional; all fields optional
+      max_attempts: 5           # default 3
+      base_delay: 10s           # first-retry cap; "500ms" / "10s" / "5m" / "PT10S"
+      max_delay: 10m            # backoff ceiling
     with:                       # action inputs; values support templating
       method: GET
       url: "https://example.com/api"
@@ -92,13 +97,34 @@ A `with:` value that is exactly one `{{ … }}` keeps its original type
 - Steps run strictly in order; each step is one row in `job_queue`.
 - **At-least-once** delivery with idempotency: a step that already SUCCEEDED
   for an execution is never re-run.
-- Retry: per-step `max_attempts` (default 3), fixed 30s backoff;
-  exhausted → step FAILED → execution FAILED, later steps never run.
+- Retry: exponential backoff with full jitter —
+  `delay = random(0, min(max_delay, base_delay × 2^(attempt−1)))`,
+  defaults base 10s / max 10min / 3 attempts; per-step `retry:` overrides
+  (legacy top-level `max_attempts` still works).
+- Exhausted retries → step FAILED → execution FAILED **and the job lands in
+  the dead letter queue** with its input and trigger snapshot (see below).
 - Crash recovery: claimed jobs hold a `locked_until` lease (60s); if a worker
   dies, the lease expires and any worker picks the job up again. Actions that
   outlive the lease can be delivered twice — that's the at-least-once contract.
+- Graceful shutdown: on SIGTERM in-flight steps get `POTOK_SHUTDOWN_GRACE`
+  (default 20s) to finish; remaining leases are released immediately so
+  another instance continues without waiting out the lock timeout.
 - Statuses: execution `PENDING → RUNNING → SUCCEEDED | FAILED`,
   step additionally `SKIPPED` (false `if:` condition).
+- Workflow names are unique **among active workflows** only: soft-deleting a
+  workflow frees its name for re-use; old executions keep pointing at the old
+  workflow id.
+
+## Dead letter queue
+
+| Method & path | Description |
+|---|---|
+| `GET /api/dlq?page=&size=` | dead jobs, newest first (`items`, `total`) |
+| `POST /api/dlq/{id}/requeue` | put the job back on the queue (attempts reset, execution reopened) |
+| `DELETE /api/dlq/{id}` | drop the entry |
+
+Optional alerting: `POTOK_DLQ_TELEGRAM=true` (with telegram configured) sends
+a summary message when jobs enter the DLQ, rate-limited to one per minute.
 
 ## REST API
 
@@ -129,10 +155,39 @@ behind a reverse proxy or private network; auth is on the roadmap (M4).
 | `POTOK_QUEUE_WORKERS` | `2` | concurrent queue workers (virtual threads) |
 | `POTOK_QUEUE_POLL_INTERVAL` | `PT1S` | idle poll sleep |
 | `POTOK_QUEUE_LOCK_TIMEOUT` | `PT60S` | job lease; crashed workers recover after this |
-| `POTOK_QUEUE_RETRY_BACKOFF` | `PT30S` | fixed delay between attempts |
+| `POTOK_QUEUE_RETRY_BASE_DELAY` | `PT10S` | backoff base (first-retry cap) |
+| `POTOK_QUEUE_RETRY_MAX_DELAY` | `PT10M` | backoff ceiling |
 | `POTOK_QUEUE_DEFAULT_MAX_ATTEMPTS` | `3` | default per-step attempts |
+| `POTOK_SHUTDOWN_GRACE` | `PT20S` | in-flight step budget on SIGTERM |
 | `POTOK_CRON_REFRESH_INTERVAL` | `PT30S` | how often cron schedules re-read the DB |
 | `POTOK_TELEGRAM_API_BASE` | `https://api.telegram.org` | Bot API base (tests/self-hosted) |
+| `POTOK_DLQ_TELEGRAM` | `false` | telegram alert when jobs enter the DLQ |
+| `POTOK_LOG_JSON` | `false` | structured JSON logs (logstash encoder) |
+
+## Observability
+
+`/actuator/prometheus` (Micrometer), `/actuator/health/liveness`,
+`/actuator/health/readiness` (includes the DB check). Metrics:
+
+| Metric | Type | Notes |
+|---|---|---|
+| `potok_queue_depth` | gauge | rows in job_queue |
+| `potok_dlq_size` | gauge | rows in dead_letter |
+| `potok_executions_started_total` | counter | |
+| `potok_executions_succeeded_total` | counter | |
+| `potok_executions_failed_total` | counter | |
+| `potok_step_duration_seconds` | timer | tags: `action`, `outcome` |
+| `potok_step_retries_total` | counter | rescheduled attempts |
+| `potok_action_failures_total` | counter | tag: `action` (http, telegram, …) |
+| `potok_dlq_added_total` | counter | jobs dead-lettered |
+
+Logs: plain text by default; `POTOK_LOG_JSON=true` switches to structured
+JSON with `execution_id` and `workflow_name` MDC fields in step processing.
+
+## Deploying
+
+Free-tier guide (Koyeb + Neon, from the GHCR image CI publishes):
+[docs/deploy.md](docs/deploy.md).
 
 ## Development
 

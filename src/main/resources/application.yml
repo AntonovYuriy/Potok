@@ -1,6 +1,8 @@
 spring:
   application:
     name: potok
+  lifecycle:
+    timeout-per-shutdown-phase: ${POTOK_SHUTDOWN_GRACE:PT20S}
   threads:
     virtual:
       enabled: true
@@ -16,22 +18,38 @@ spring:
 
 server:
   port: ${PORT:8080}
+  shutdown: graceful
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
 
 potok:
   queue:
     workers: ${POTOK_QUEUE_WORKERS:2}
     poll-interval: ${POTOK_QUEUE_POLL_INTERVAL:PT1S}
     lock-timeout: ${POTOK_QUEUE_LOCK_TIMEOUT:PT60S}
-    retry-backoff: ${POTOK_QUEUE_RETRY_BACKOFF:PT30S}
+    retry-base-delay: ${POTOK_QUEUE_RETRY_BASE_DELAY:PT10S}
+    retry-max-delay: ${POTOK_QUEUE_RETRY_MAX_DELAY:PT10M}
     default-max-attempts: ${POTOK_QUEUE_DEFAULT_MAX_ATTEMPTS:3}
+    shutdown-grace: ${POTOK_SHUTDOWN_GRACE:PT20S}
   cron:
     refresh-interval: ${POTOK_CRON_REFRESH_INTERVAL:PT30S}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     api-base: ${POTOK_TELEGRAM_API_BASE:https://api.telegram.org}
+    default-chat-id: ${TELEGRAM_CHAT_ID:}
+  dlq:
+    telegram-notify: ${POTOK_DLQ_TELEGRAM:false}
+    notify-interval: ${POTOK_DLQ_NOTIFY_INTERVAL:PT1M}
+  log:
+    json: ${POTOK_LOG_JSON:false}

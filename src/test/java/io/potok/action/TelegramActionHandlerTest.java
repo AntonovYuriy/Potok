@@ -12,8 +12,8 @@ class TelegramActionHandlerTest {
 
     @Test
     void failsGracefullyWithoutToken() {
-        TelegramActionHandler handler = new TelegramActionHandler(
-                new ObjectMapper(), new TelegramProperties("", "https://api.telegram.org"));
+        TelegramActionHandler handler = new TelegramActionHandler(new TelegramClient(
+                new ObjectMapper(), new TelegramProperties("", "https://api.telegram.org", "")));
 
         StepResult result = handler.execute(new StepContext(
                 UUID.randomUUID(), "wf", "notify",
@@ -25,8 +25,8 @@ class TelegramActionHandlerTest {
 
     @Test
     void failsWhenChatIdMissing() {
-        TelegramActionHandler handler = new TelegramActionHandler(
-                new ObjectMapper(), new TelegramProperties("t", "https://api.telegram.org"));
+        TelegramActionHandler handler = new TelegramActionHandler(new TelegramClient(
+                new ObjectMapper(), new TelegramProperties("t", "https://api.telegram.org", "")));
 
         StepResult result = handler.execute(new StepContext(
                 UUID.randomUUID(), "wf", "notify", Map.of("text", "hi"), 1));

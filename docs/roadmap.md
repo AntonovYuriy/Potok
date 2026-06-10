@@ -2,40 +2,43 @@
 
 ## M1 — MVP (done)
 
-Linear workflow engine, complete and tested:
-
 - YAML definitions (GitHub-Actions style), validated on create/update
 - Triggers: cron (DB-driven, hot-reloaded) and webhook (`POST /hooks/{path}`)
 - Linear step chains with `if:` conditions and minimal `{{ }}` templating
 - Actions via Spring-bean SPI: `http`, `telegram`
-- Postgres-only persistence: definitions, execution state, job queue
-- Queue: `SELECT ... FOR UPDATE SKIP LOCKED`, virtual-thread workers,
-  lease-based crash recovery, at-least-once with idempotent steps
-- Retry: per-step `max_attempts` (default 3), fixed 30s backoff
-- REST control plane with problem+json errors
-- Docker multi-stage build + compose (app + postgres)
+- Postgres-only persistence; `FOR UPDATE SKIP LOCKED` queue, virtual-thread
+  workers, lease-based crash recovery, at-least-once with idempotent steps
+- REST control plane with problem+json errors; Docker + compose
 
-## M2 — DAG & richer workflows
+## M2 — reliability, observability, deploy-readiness (done)
 
-- `needs:` between steps → DAG execution, parallel branches
-  (queue already supports it: one row per runnable step; the scheduler in
-  `JobProcessor.advance` is the only place that assumes linearity)
-- Richer conditions: `&&`/`||`, `<`/`>`, `contains`
-- More actions: slack, email (SMTP), shell (sandboxed), generic webhook-out
-- Per-step `timeout:`; exponential backoff option
-- Workflow versioning (currently PUT replaces in place)
+- Workflow names unique among active workflows only (partial unique index) —
+  deleted names are reusable
+- Exponential backoff with full jitter (base 10s, ×2, cap 10min); per-step
+  `retry: {max_attempts, base_delay, max_delay}`
+- Dead letter queue: exhausted jobs with full context; list/requeue/delete
+  API; optional rate-limited Telegram alert (`POTOK_DLQ_TELEGRAM`)
+- Graceful shutdown: grace for in-flight steps, then immediate lease release
+- Micrometer + Prometheus (`/actuator/prometheus`, potok_* meters),
+  JSON logging switch, MDC, liveness/readiness probes
+- CI: GitHub Actions build + tests; GHCR image `:latest` + `:sha` on main
+- docs/deploy.md: Koyeb + Neon free-tier guide
 
-## M3 — scale-out
+## M3 — candidates
 
-- Queue backend interface; optional Kafka/Rabbit implementation
-- Multiple app instances (already safe thanks to SKIP LOCKED — needs only
-  cron-trigger leader election or dedup)
-- Micrometer metrics (queue depth, step latency, failure rate), OTel tracing
-- Dead-letter handling and manual re-run of FAILED executions from a step
+- **DAG execution**: `needs:` between steps, parallel branches (queue model
+  already supports it; replace `JobProcessor.advance`); richer conditions
+  (`&&`/`||`, `<`/`>`, `contains`)
+- **Poller triggers**: periodic HTTP poll + diff as a trigger source
+- **Executions TTL / archival**: retention policy for workflow_execution /
+  step_execution / dead_letter growth
+- **Read-only web UI**: workflow list, execution timeline, step inspector
+- Cron leader election (multi-instance dedup), more actions (slack, email,
+  shell), per-step timeouts, workflow versioning
 
 ## M4 — product surface
 
-- Web UI: workflow list, execution timeline, step inspector
 - AuthN/AuthZ: API tokens, per-workflow scopes (currently NO auth)
-- Secrets management (currently env vars only, `${VAR}` substitution)
+- Secrets management beyond env vars
 - Multi-tenancy
+- Editable UI

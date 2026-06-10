@@ -34,9 +34,18 @@ Env vars only. No secrets in repo.
 
 ## Conventions
 
-- Branch: work on `main`.
+- Git flow: every task/milestone gets its own branch off `main`, named `feat/<milestone>-<short-name>` (e.g. `feat/m1-core-engine`). No direct commits to `main` (except the post-merge `docs/handoff.md` update — see below).
+- Finish flow is fully automated, no human approval gate:
+  1. `git push -u origin <branch>`
+  2. `gh pr create --base main --fill` (or with explicit title/body)
+  3. verify CI / build / tests green
+  4. `gh pr merge --squash --delete-branch`
+  5. `git checkout main && git pull`
+  6. update `docs/handoff.md` on `main` and push directly
+- If `gh` is missing/unauthenticated: run `gh auth login` once. Fallback when PR path is unavailable: local squash-merge (`git checkout main && git merge --squash <branch> && git commit && git push && git branch -d <branch>`) — but prefer the PR path for history.
 - Commits: Conventional Commits (`feat:`, `fix:`, `chore:`, `refactor:`, `docs:`, `test:`).
 - One concern per commit. Imperative subject ≤ 72 chars.
+- Commit messages and PR descriptions: no co-author or "generated with" footers.
 - Style: terse, no dead code, no speculative abstractions.
 - Tests next to features, integration tests against real Postgres via Testcontainers.
 

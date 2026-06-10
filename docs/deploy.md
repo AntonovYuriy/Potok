@@ -42,6 +42,7 @@ or make the package public (GitHub → Packages → potok → settings → visib
    | `DB_USER` | Neon role |
    | `DB_PASSWORD` | Neon password (use Koyeb **Secret** type) |
    | `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | `5` |
+   | `POTOK_API_KEY` | long random string (Secret) — REQUIRED on a public URL, guards /api/** and the dashboard ops |
    | `TELEGRAM_BOT_TOKEN` | bot token (Secret) — optional |
    | `TELEGRAM_CHAT_ID` | default chat — optional |
    | `POTOK_DLQ_TELEGRAM` | `true` for DLQ alerts — optional |

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "potok",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "logs", "-f", "app"],
+      "port": 8080
+    }
+  ]
+}

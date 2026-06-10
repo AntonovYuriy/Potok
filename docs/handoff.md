@@ -1,9 +1,14 @@
 # Handoff
 
-_Last updated: 2026-06-10 (M4 done)._
+_Last updated: 2026-06-10 (M4.1 done)._
 
 ## Current state
 
+- **M4.1 done — repository cleanup + audit gap fixes** (2026-06-10):
+  - History rewritten (git filter-repo): local tooling configuration removed from every commit; full-history sweep clean in a fresh clone (0 matches, 133 tracked files); new root commit `2169a18`, force-pushed; CI green on the rewritten main, image republished. Local-only ignores live in `.git/info/exclude` (re-add on a fresh machine if you keep tooling files in the working copy).
+  - Condition validation at create/update (PR #7, squash `cdbe96e`): malformed `if:` / `fire_when:` (dangling `&&`, unbalanced parens) → 400 with step name; pure syntax walk, no evaluation, so runtime short-circuiting can't hide errors.
+  - Immediate first poll (same PR): pollers schedule at `Instant.now()` + fixedDelay — baseline lands right after create/enable (live-measured 0.3s; previously one full interval). Documented in README.
+  - Live-verified: malformed fire_when → 400; full poll run (extract `$.product.price`, edge fire on threshold, `{{ trigger.value }}` in step input) SUCCEEDED.
 - **M4 done — UI editing, versioning, channel security, pollers v2, polish** (2026-06-10, PR #5, squash `d6cdb67`, 117 tests):
   - Dashboard YAML editor (#/new, edit): line-number gutter, tab handling, inline 400s; no libs/build step.
   - Versioning: append-only `workflow_version` (V6, backfilled), `current_version` pointer, GET versions + rollback (= new version); executions pin version_no AND snapshot the parsed definition — mid-run edits are inert. UI version list + rollback.

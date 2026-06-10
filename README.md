@@ -1,199 +1,214 @@
-# Potok
+# потóк
 
 [![ci](https://github.com/AntonovYuriy/Potok/actions/workflows/ci.yml/badge.svg)](https://github.com/AntonovYuriy/Potok/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Java 21](https://img.shields.io/badge/Java-21-orange)
+![Spring Boot 3.5](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
-Self-hosted workflow engine. Define workflows in YAML (GitHub-Actions style):
-a **trigger** (cron or webhook) starts a **linear chain of steps**, each step runs
-an **action** (HTTP call, Telegram message). PostgreSQL is the only dependency —
-it stores definitions, execution state, *and* the job queue
-(`SELECT ... FOR UPDATE SKIP LOCKED`). No Kafka, no Redis, no UI. One container + one database.
+**Potok** is a self-hosted workflow engine: triggers (cron, webhook, HTTP/RSS
+pollers) start YAML-defined DAGs of steps that call HTTP APIs, send Telegram
+messages, or run your own actions. One Java service plus one PostgreSQL
+database — the queue, the state, the history and the dedupe all live in
+Postgres, so there is no broker to operate. A built-in dashboard (served from
+the same jar, zero build step) covers editing, version history, executions,
+the dead letter queue and API tokens.
 
-```
-            ┌──────────────┐      ┌────────────────┐      ┌─────────────────┐
- trigger ──▶│  REST API /  │─────▶│  job_queue     │─────▶│  workers        │
- (cron,     │  webhook     │ row  │  (postgres,    │ poll │  (virtual       │
-  webhook,  └──────────────┘      │   SKIP LOCKED) │      │   threads)      │
-  manual)                         └────────────────┘      └────────┬────────┘
-                                                                   │ executes
-                                                          ┌────────▼────────┐
-                                                          │  actions (SPI)  │
-                                                          │  http, telegram │
-                                                          └─────────────────┘
-```
+![dashboard demo](docs/demo.gif)
 
 ## Quickstart
 
 ```bash
-git clone <this repo> && cd potok
+git clone https://github.com/AntonovYuriy/Potok.git && cd Potok
 docker compose up -d
-curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml localhost:8080/api/workflows
+open http://localhost:8080            # dashboard; create a workflow in the editor
 ```
 
-App: `http://localhost:8080`, health: `/actuator/health`, Postgres: `:5432`.
-Telegram is optional — set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in the
-environment before `docker compose up` to make `telegram` steps work; without a
-token the step fails with a clear error message, nothing crashes.
-
-Trigger a run manually and inspect it:
+Or via API:
 
 ```bash
-ID=$(curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml localhost:8080/api/workflows | jq -r .id)
-EXEC=$(curl -s -X POST localhost:8080/api/workflows/$ID/run | jq -r .executionId)
-curl -s localhost:8080/api/executions/$EXEC | jq
+curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
+     localhost:8080/api/workflows
 ```
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph triggers
+        CRON[cron]
+        HOOK[webhook<br/>HMAC optional]
+        POLL[poll / rss<br/>edge-triggered]
+    end
+    subgraph postgres [PostgreSQL]
+        Q[(job_queue<br/>SKIP LOCKED)]
+        ST[(executions,<br/>versions, DLQ,<br/>poll state)]
+    end
+    subgraph engine [Potok jar]
+        W1[worker]
+        W2[worker]
+        UI[dashboard + REST API]
+    end
+    A1[http action]
+    A2[telegram action]
+    A3[your ActionHandler bean]
+
+    CRON --> Q
+    HOOK --> Q
+    POLL --> Q
+    Q -->|FOR UPDATE SKIP LOCKED| W1 & W2
+    W1 & W2 --> A1 & A2 & A3
+    W1 & W2 --> ST
+    UI --- ST
+```
+
+Workers are virtual threads claiming jobs with `SELECT … FOR UPDATE SKIP
+LOCKED`; a `locked_until` lease doubles as crash recovery. Every step of every
+execution is one queue row — parallel DAG branches are just multiple claimable
+rows.
 
 ## YAML reference
 
 ```yaml
-name: garbage-reminder          # unique workflow name (required)
+name: price-watch                  # unique among active workflows
 
-trigger:                        # exactly one of cron | webhook | poll | rss (required)
-  cron: "0 19 * * *"            # 5-field crontab or 6-field Spring cron
-  # webhook: { path: "gh-events" }   # → POST /hooks/gh-events starts a run
-  # poll:                            # poll an HTTP endpoint on a schedule
+trigger:                           # exactly one of cron | webhook | poll | rss
+  cron: "0 19 * * *"               # 5-field crontab or 6-field Spring cron
+  # webhook:
+  #   path: "gh-events"            # → POST /hooks/gh-events
+  #   hmac_secret_env: "GH_SECRET" # optional: require X-Hub-Signature-256 (see Security)
+  # poll:
   #   interval: 5m
-  #   http: { method: GET, url: "https://..." }
-  #   fire_when: "changed"           # or an expression, e.g. "{{ body.price < 100 }}"
+  #   http: { method: GET, url: "https://shop.example/api/item/42" }
+  #   extract: { jsonpath: "$.price" }    # or { css: "span.price" } for HTML
+  #   fire_when: "{{ poll.value < 100 }}" # expression (edge-triggered) or "changed"
   # rss: { interval: 15m, url: "https://hnrss.org/frontpage" }
 
-steps:                          # a DAG; without `needs` steps run in file order
-  - name: fetch                 # unique step name (required)
-    action: http                # action type (required)
-    retry:                      # optional; all fields optional
-      max_attempts: 5           # default 3
-      base_delay: 10s           # first-retry cap; "500ms" / "10s" / "5m" / "PT10S"
-      max_delay: 10m            # backoff ceiling
-    with:                       # action inputs; values support templating
+steps:                             # a DAG; without `needs` steps run in file order
+  - name: fetch
+    action: http
+    retry: { max_attempts: 5, base_delay: 10s, max_delay: 10m }   # optional
+    with:
       method: GET
       url: "https://example.com/api"
-      headers: { Accept: application/json }
-      # body: { any: json }     # maps/lists are sent as JSON
-      # fail_on_status: false   # record non-2xx as success so a later `if` can react
+      # headers: { Accept: application/json }
+      # body: { any: json }
+      # fail_on_status: false      # record non-2xx as success (healthcheck pattern)
 
   - name: notify
-    if: "{{ steps.fetch.status == 200 }}"   # optional condition; false → step SKIPPED
-    needs: [fetch]                          # optional dependencies (see DAG below)
+    needs: [fetch]                 # explicit dependencies; [] = root
+    if: "{{ steps.fetch.status == 200 && exists(steps.fetch.body.message) }}"
     action: telegram
     with:
-      chat_id: "${TELEGRAM_CHAT_ID}"        # ${VAR} = environment variable
-      text: "Завтра вывоз: {{ steps.fetch.body }}"
+      chat_id: "${TELEGRAM_CHAT_ID}"          # ${VAR} = environment variable
+      text: "Result: {{ steps.fetch.body.message }}"
 ```
 
-### DAG: needs and parallelism
+### DAG semantics
 
-- `needs: [a, b]` — the step runs once ALL listed steps finished successfully.
-  Steps without `needs` depend on the previous step in the file (M1/M2 linear
-  YAMLs run unchanged); the first step (or any step with `needs: []`) is a root.
-- Independent ready steps run **in parallel** (bounded by `POTOK_QUEUE_WORKERS`).
-- Cycles, unknown `needs`, and template references to steps outside the step's
-  dependency closure are rejected with 400 at create/update time.
-- Failure: a step that exhausts its retries marks the execution FAILED and its
-  downstream steps SKIPPED (`dependency failed: X`); **independent branches keep
-  running**. A DLQ requeue of the failed step un-skips its downstream.
-- A step SKIPPED **by its own `if:` condition counts as satisfied** for
-  dependents — they still run (use the condition on downstream steps too if a
-  whole branch should stop).
+- `needs: [a, b]` — runs once ALL listed steps are satisfied. No `needs` =
+  the previous step in the file (linear YAMLs just work); independent ready
+  steps run **in parallel**.
+- Validation at create/update (400 with a clear message): dependency cycles,
+  unknown `needs`, template references outside the step's dependency closure.
+- A step that exhausts retries fails the execution and poisons its downstream
+  as `SKIPPED (dependency failed: X)`; **independent branches keep running**.
+  A DLQ requeue revives the downstream too.
+- A step SKIPPED by its own `if:` **counts as satisfied** for dependents.
 
 ### Conditions
 
-`if:` and `poll.fire_when` accept one comparison or function call:
+Used in step `if:` and `poll.fire_when`. Grammar (parentheses group, `&&`
+binds tighter than `||`):
 
-| Syntax | Notes |
-|---|---|
-| `a == b`, `a != b` | numeric when both sides are numbers, string otherwise |
-| `a > b`, `a < b`, `a >= b`, `a <= b` | same numeric/string rule |
-| `contains(haystack, needle)` | substring for strings, membership for lists |
-| `exists(path)` | path resolves to a non-null value |
+```
+expr   := or
+or     := and ('||' and)*
+and    := unit ('&&' unit)*
+unit   := '(' expr ')' | a OP b | contains(x, y) | exists(path) | path
+OP     := == | != | > | < | >= | <=
+```
 
-Operands: dot-paths (`steps.fetch.body.price`, `trigger.user`), numbers,
-`'strings'`, `true/false/null`.
-
-### Poll & RSS triggers
-
-`poll` fetches a URL every `interval`; `fire_when: "changed"` starts an
-execution when the response body hash changes (the first poll only records a
-baseline). An expression (over `{status, body, headers}`) fires on its
-**false → true transition** — edge-triggered, so a condition that stays true
-fires once, not every poll. `rss` starts one execution per **new** feed item
-(deduped by guid/link; first poll baselines existing items silently). Poller
-state lives in Postgres and survives restarts; the trigger payload is the
-polled response / feed item, available as `{{ trigger.* }}`. See
-[examples/coin-watcher.yaml](examples/coin-watcher.yaml) and
-[examples/rss-digest.yaml](examples/rss-digest.yaml).
+Operands: dot-paths (`steps.fetch.body.price`, `trigger.user`, `poll.value`),
+numbers, `'strings'`, `true/false/null`. Comparison is numeric when both sides
+are numbers, lexicographic otherwise. `contains` = substring or list
+membership; `exists` = path resolves to non-null.
 
 ### Templating
 
-Minimal by design — no full expression language:
+`{{ path }}` interpolates into strings; a `with:` value that is exactly one
+expression keeps its type. Context: `trigger.*` (webhook payload / poll
+response / rss item), `steps.<name>.*` (outputs of dependencies only).
+`${ENV_VAR}` substitutes environment variables at execution time.
 
-| Syntax | Meaning |
-|---|---|
-| `{{ trigger.user.name }}` | dot-path into the trigger payload (webhook JSON body) |
-| `{{ steps.fetch.status }}` | dot-path into a previous step's output |
-| `{{ a == b }}`, `{{ a != b }}` | comparison in `if:` conditions (numbers, 'strings', true/false/null) |
-| `${ENV_VAR}` | environment variable substitution (empty when unset) |
+### Retry
 
-A `with:` value that is exactly one `{{ … }}` keeps its original type
-(numbers stay numbers, objects stay objects).
+Exponential backoff with full jitter:
+`delay = random(0, min(max_delay, base_delay × 2^(attempt−1)))` — defaults
+3 attempts, base 10s, cap 10min. Exhausted ⇒ dead letter queue.
 
-### Step outputs
+## Versioning
 
-`http` → `{status, headers, body}` (body parsed as JSON when possible).
-`telegram` → `{status, chat_id}`.
-`warsaw_waste` → `{tomorrow_date, tomorrow, tomorrow_count, summary, upcoming}` —
-Warsaw (warszawa19115.pl) waste collection schedule for an `address_point_id`;
-see [examples/garbage-reminder.yaml](examples/garbage-reminder.yaml) and the
-handler source for a template of writing your own action.
+Every create/update appends to an immutable history (`workflow_version`);
+executions pin the version they started with — editing a workflow never
+changes what an in-flight execution does. Rollback creates a *new* version
+with the old content. Versions are plain text and kept forever.
 
-## Execution semantics
+```
+GET  /api/workflows/{id}/versions?page=&size=
+POST /api/workflows/{id}/versions/{n}/rollback
+```
 
-- Steps run strictly in order; each step is one row in `job_queue`.
-- **At-least-once** delivery with idempotency: a step that already SUCCEEDED
-  for an execution is never re-run.
-- Retry: exponential backoff with full jitter —
-  `delay = random(0, min(max_delay, base_delay × 2^(attempt−1)))`,
-  defaults base 10s / max 10min / 3 attempts; per-step `retry:` overrides
-  (legacy top-level `max_attempts` still works).
-- Exhausted retries → step FAILED → execution FAILED **and the job lands in
-  the dead letter queue** with its input and trigger snapshot (see below).
-- Crash recovery: claimed jobs hold a `locked_until` lease (60s); if a worker
-  dies, the lease expires and any worker picks the job up again. Actions that
-  outlive the lease can be delivered twice — that's the at-least-once contract.
-- Graceful shutdown: on SIGTERM in-flight steps get `POTOK_SHUTDOWN_GRACE`
-  (default 20s) to finish; remaining leases are released immediately so
-  another instance continues without waiting out the lock timeout.
-- Statuses: execution `PENDING → RUNNING → SUCCEEDED | FAILED`,
-  step additionally `SKIPPED` (false `if:` condition).
-- Workflow names are unique **among active workflows** only: soft-deleting a
-  workflow frees its name for re-use; old executions keep pointing at the old
-  workflow id.
+## Security
+
+**API tokens** — `POTOK_API_KEY` (env) is the bootstrap root key; further
+tokens are managed at `/api/tokens` (or the Tokens page in the dashboard).
+Plaintext is shown once; only SHA-256 hashes are stored; revocation is
+immediate. All of `/api/**` accepts root key or any active token via the
+`X-API-Key` header — except `POST /api/admin/purge`, which is root-only.
+
+**Webhook signatures** — set `trigger.webhook.hmac_secret_env: "MY_SECRET"`
+and exports `MY_SECRET` on the server. Deliveries must then carry
+`X-Hub-Signature-256: sha256=<hex HMAC-SHA256 of the raw body>` — exactly what
+GitHub sends. Wiring a GitHub webhook: repo → Settings → Webhooks → payload
+URL `https://your-host/hooks/<path>`, content type JSON, secret = the same
+value as `MY_SECRET`. Invalid/missing signature → 401; comparison is
+constant-time; unset env var fails closed.
 
 ## Dead letter queue
 
-| Method & path | Description |
-|---|---|
-| `GET /api/dlq?page=&size=` | dead jobs, newest first (`items`, `total`) |
-| `POST /api/dlq/{id}/requeue` | put the job back on the queue (attempts reset, execution reopened) |
-| `DELETE /api/dlq/{id}` | drop the entry |
+Exhausted jobs land in `dead_letter` with input + trigger snapshot.
+`GET /api/dlq`, `POST /api/dlq/{id}/requeue` (reopens the execution, revives
+dependency-skipped downstream), `DELETE /api/dlq/{id}`. Optional Telegram
+alert: `POTOK_DLQ_TELEGRAM=true`, rate-limited to 1/min.
 
-Optional alerting: `POTOK_DLQ_TELEGRAM=true` (with telegram configured) sends
-a summary message when jobs enter the DLQ, rate-limited to one per minute.
+## Dashboard
+
+Served from the jar at `/` — vanilla ES modules and hand-written CSS, no
+build step, no CDN. Workflow list and detail, **YAML editor** with inline
+validation errors, **version history with rollback**, execution step timeline
+(durations, attempts, errors, outputs), DLQ ops, **API tokens** page.
+Auth-aware: `/api/meta` (public) tells the UI whether to prompt for a key.
+Open views poll every 7s.
 
 ## REST API
 
 | Method & path | Description |
 |---|---|
-| `POST /api/workflows` | create workflow; body = raw YAML (`Content-Type: text/plain` or `application/yaml`); 201 + JSON |
-| `GET /api/workflows` | list workflows |
-| `GET /api/workflows/{id}` | one workflow with definition + YAML source |
-| `PUT /api/workflows/{id}` | replace definition (raw YAML body), re-enables |
-| `DELETE /api/workflows/{id}` | soft delete: `enabled=false`, history kept |
-| `POST /api/workflows/{id}/run` | start an execution manually; 202 |
-| `POST /hooks/{path}` | webhook trigger; JSON body becomes `trigger.*` payload; 202 |
-| `GET /api/executions?workflowId=` | recent executions (latest 100) |
-| `GET /api/executions/{id}` | execution with per-step status, input, output, error |
+| `POST /api/workflows` | create; body = raw YAML (`Content-Type: text/plain`) |
+| `GET /api/workflows` · `GET /{id}` | list / detail (definition + YAML + current version) |
+| `PUT /api/workflows/{id}` | update = new version; re-enables |
+| `DELETE /api/workflows/{id}` · `POST /{id}/enable` | soft disable / enable |
+| `POST /api/workflows/{id}/run` | manual run, 202 |
+| `GET /api/workflows/{id}/versions` · `POST .../versions/{n}/rollback` | history / rollback |
+| `POST /hooks/{path}` | webhook trigger (signature-checked when configured) |
+| `GET /api/executions?workflowId=&page=&size=` · `GET /{id}` | history / step detail |
+| `GET /api/dlq` · `POST /api/dlq/{id}/requeue` · `DELETE /api/dlq/{id}` | dead letters |
+| `POST /api/tokens` · `GET /api/tokens` · `DELETE /api/tokens/{id}` | token management |
+| `POST /api/admin/purge` | run retention now (root key only) |
+| `GET /api/meta` | public: app name, authRequired |
 
-Errors are RFC 7807 `application/problem+json`. **No auth in M1** — put it
-behind a reverse proxy or private network; auth is on the roadmap (M4).
+Errors are RFC 7807 `application/problem+json`.
 
 ## Configuration (environment variables)
 
@@ -202,99 +217,88 @@ behind a reverse proxy or private network; auth is on the roadmap (M4).
 | `DB_URL` | `jdbc:postgresql://localhost:5432/potok` | Postgres JDBC URL |
 | `DB_USER` / `DB_PASSWORD` | `potok` / `potok` | DB credentials |
 | `PORT` | `8080` | HTTP port |
-| `TELEGRAM_BOT_TOKEN` | – | enables the `telegram` action |
-| `TELEGRAM_CHAT_ID` | – | convention used by the examples via `${TELEGRAM_CHAT_ID}` |
-| `POTOK_QUEUE_WORKERS` | `2` | concurrent queue workers (virtual threads) |
-| `POTOK_QUEUE_POLL_INTERVAL` | `PT1S` | idle poll sleep |
-| `POTOK_QUEUE_LOCK_TIMEOUT` | `PT60S` | job lease; crashed workers recover after this |
-| `POTOK_QUEUE_RETRY_BASE_DELAY` | `PT10S` | backoff base (first-retry cap) |
-| `POTOK_QUEUE_RETRY_MAX_DELAY` | `PT10M` | backoff ceiling |
+| `POTOK_API_KEY` | – | root API key; unset = auth off (local dev) |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | – | telegram action / examples |
+| `POTOK_QUEUE_WORKERS` | `2` | concurrent workers (virtual threads) |
+| `POTOK_QUEUE_LOCK_TIMEOUT` | `PT60S` | job lease; crash recovery horizon |
+| `POTOK_QUEUE_RETRY_BASE_DELAY` / `_MAX_DELAY` | `PT10S` / `PT10M` | backoff shape |
 | `POTOK_QUEUE_DEFAULT_MAX_ATTEMPTS` | `3` | default per-step attempts |
-| `POTOK_SHUTDOWN_GRACE` | `PT20S` | in-flight step budget on SIGTERM |
-| `POTOK_CRON_REFRESH_INTERVAL` | `PT30S` | how often cron schedules re-read the DB |
+| `POTOK_SHUTDOWN_GRACE` | `PT20S` | in-flight budget on SIGTERM, then lease release |
+| `POTOK_CRON_REFRESH_INTERVAL` | `PT30S` | trigger schedules re-read |
+| `POTOK_RETENTION_DAYS` | `30` | nightly purge of finished executions |
+| `POTOK_DLQ_TELEGRAM` | `false` | DLQ Telegram alerts |
+| `POTOK_LOG_JSON` | `false` | structured JSON logs |
 | `POTOK_TELEGRAM_API_BASE` | `https://api.telegram.org` | Bot API base (tests/self-hosted) |
-| `POTOK_DLQ_TELEGRAM` | `false` | telegram alert when jobs enter the DLQ |
-| `POTOK_LOG_JSON` | `false` | structured JSON logs (logstash encoder) |
-| `POTOK_API_KEY` | – | enables X-API-Key auth for `/api/**` |
-| `POTOK_RETENTION_DAYS` | `30` | nightly purge of finished executions older than this |
-
-## Dashboard
-
-A read-mostly web UI ships inside the jar — open `http://localhost:8080/`:
-workflow list with last-run status, read-only YAML + paged execution history,
-step timeline (durations, attempts, errors, output preview), DLQ with
-requeue/delete. Ops from the UI: run, enable/disable. No YAML editing (M4).
-Vanilla JS, no build step; open views auto-refresh every 7 seconds.
-
-![dashboard](docs/dashboard.png)
-
-## Auth
-
-Set `POTOK_API_KEY` and every `/api/**` call must carry the
-`X-API-Key: <key>` header (401 problem+json otherwise). Unset = auth disabled
-(local dev). Always open: `/` (dashboard assets), `/api/meta` (reports
-`authRequired` so the UI knows to prompt; the key is kept in sessionStorage),
-`/hooks/**` and actuator endpoints. Webhook signatures and per-user tokens are
-M4 scope.
 
 ## Observability
 
-`/actuator/prometheus` (Micrometer), `/actuator/health/liveness`,
-`/actuator/health/readiness` (includes the DB check). Metrics:
+`/actuator/prometheus`: `potok_queue_depth`, `potok_dlq_size`, execution
+started/succeeded/failed counters, `potok_step_duration_seconds{action,outcome}`,
+retry / action-failure / purge counters. Liveness and readiness probes
+(readiness includes the DB). MDC `execution_id` + `workflow_name` on step logs.
 
-| Metric | Type | Notes |
-|---|---|---|
-| `potok_queue_depth` | gauge | rows in job_queue |
-| `potok_dlq_size` | gauge | rows in dead_letter |
-| `potok_executions_started_total` | counter | |
-| `potok_executions_succeeded_total` | counter | |
-| `potok_executions_failed_total` | counter | |
-| `potok_step_duration_seconds` | timer | tags: `action`, `outcome` |
-| `potok_step_retries_total` | counter | rescheduled attempts |
-| `potok_action_failures_total` | counter | tag: `action` (http, telegram, …) |
-| `potok_dlq_added_total` | counter | jobs dead-lettered |
-| `potok_purged_total` | counter | executions removed by retention |
+## Design decisions
 
-Logs: plain text by default; `POTOK_LOG_JSON=true` switches to structured
-JSON with `execution_id` and `workflow_name` MDC fields in step processing.
+**Postgres as the queue, not a broker.** A workflow engine needs durable
+state in a database anyway; putting the queue in the same Postgres means
+exactly-one moving part, transactional handoff between "execution created"
+and "job visible", and free backpressure. `FOR UPDATE SKIP LOCKED` gives
+contention-free claims; the `locked_until` lease makes crash recovery a
+predicate instead of a startup sweep. The trade-off — polling latency and
+queue throughput bounded by Postgres — is the right one below thousands of
+jobs/minute, which is this tool's territory.
+
+**At-least-once, with idempotency where it's cheap.** Actions do external
+I/O, so holding a transaction across them is off the table. Instead: the
+lease guards the attempt, re-delivery after a crash is possible, and a step
+that already SUCCEEDED is never re-run. Duplicate side effects are confined
+to the rare lease-expiry window — documented, not hidden.
+
+**Edge-triggered pollers.** A condition that *stays* true fires once, not
+every 5 minutes — alerting people repeatedly about the same price drop trains
+them to ignore alerts. State (`poll_state`, `rss_seen`) lives in Postgres and
+commits in the same transaction as the execution start, so restarts neither
+lose nor double fires. `extract` narrows change detection to the one value
+that matters, immune to timestamp noise.
+
+**DAG join dedupe via unique index.** When two parallel branches finish
+simultaneously, both compute the join step as ready. Rather than a
+coordinator, a unique index on `(execution_id, step_name)` plus
+`ON CONFLICT DO NOTHING` makes the second enqueue a no-op — correctness from
+the database, not from locks in application code.
+
+**Embedded no-build UI.** The dashboard is vanilla ES modules served from the
+jar: no node toolchain in CI, no CDN dependency at runtime, one artifact to
+deploy. The cost (no framework conveniences) is acceptable at this UI size;
+the benefit is that the UI can never be down, stale, or blocked by a build.
+
+**Executions pin their definition.** Editing a workflow mid-run must not
+change what running executions do, so each execution snapshots the parsed
+definition and version at start. History is append-only; rollback appends.
 
 ## Deploying
 
 Free-tier guide (Koyeb + Neon, from the GHCR image CI publishes):
-[docs/deploy.md](docs/deploy.md).
+[docs/deploy.md](docs/deploy.md). Multi-instance: job execution is safe at any
+replica count (SKIP LOCKED); trigger schedulers dedupe via advisory locks and
+cron claims — but the free tier is one instance anyway, and one instance is
+the well-trodden path.
 
 ## Development
 
 ```bash
 ./gradlew test          # unit + integration (needs Docker for Testcontainers)
-./gradlew bootRun       # against a local postgres (see DB_URL default)
+./gradlew bootRun       # against local postgres
 ```
 
-Package-by-feature layout, single module: `api` (REST), `definition`
-(YAML/templating/storage), `trigger` (cron, webhook), `execution`
-(queue, workers, retry), `action` (SPI + handlers).
-
-### Adding an action
-
-Implement one Spring bean — discovery is automatic:
-
-```java
-@Component
-class SlackActionHandler implements ActionHandler {
-    public String type() { return "slack"; }
-    public StepResult execute(StepContext ctx) { ... }
-}
-```
+Package-by-feature: `api`, `definition`, `trigger`, `execution`, `action`.
+Adding an action = one Spring bean implementing `ActionHandler`; see
+`WarsawWasteActionHandler` for a real-world example. More in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Roadmap
 
-- **M1 (this)** — linear workflows, cron + webhook triggers, http + telegram
-  actions, Postgres queue, REST API, Docker.
-- **M2** — DAG execution (needs/parallel branches), richer conditions,
-  more actions (Slack, email, shell), per-step timeouts.
-- **M3** — pluggable queue backends (Kafka/Rabbit) behind the queue interface,
-  horizontal worker scaling, metrics + tracing.
-- **M4** — web UI, API auth (tokens), multi-tenancy, secrets management.
-
-See [docs/roadmap.md](docs/roadmap.md) and [docs/handoff.md](docs/handoff.md)
-for the current state and next steps.
+Done: M1 linear engine → M2 reliability/observability → M3 auth, DAG,
+pollers, dashboard → M4 editor, versioning, HMAC, tokens, extract.
+Next (M5 candidates): multi-user/RBAC, workflow templates, SSE live updates
+in the dashboard, richer actions. See [docs/roadmap.md](docs/roadmap.md).

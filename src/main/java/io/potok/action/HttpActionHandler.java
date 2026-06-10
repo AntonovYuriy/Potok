@@ -15,9 +15,11 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Generic HTTP step. with: method, url, headers, body.
+ * Generic HTTP step. with: method, url, headers, body, fail_on_status.
  * Output: {status, headers, body} — body parsed as JSON when possible.
- * Non-2xx responses are step failures (and thus retried).
+ * Non-2xx responses are step failures (and thus retried) unless
+ * fail_on_status: false, which records any response as success so a later
+ * step's condition can react to the status (healthcheck pattern).
  */
 @Component
 public class HttpActionHandler implements ActionHandler {
@@ -78,7 +80,9 @@ public class HttpActionHandler implements ActionHandler {
             output.put("status", response.statusCode());
             output.put("headers", firstValueHeaders(response));
             output.put("body", parseBody(response.body()));
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            boolean failOnStatus = !Boolean.FALSE.equals(
+                    ctx.with() == null ? null : ctx.with().get("fail_on_status"));
+            if (!failOnStatus || (response.statusCode() >= 200 && response.statusCode() < 300)) {
                 return StepResult.ok(output);
             }
             return StepResult.fail("http " + method + " " + url + " returned status " + response.statusCode());

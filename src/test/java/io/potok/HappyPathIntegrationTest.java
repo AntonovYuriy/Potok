@@ -89,6 +89,38 @@ class HappyPathIntegrationTest extends IntegrationTestBase {
 
     @Test
     @SuppressWarnings("unchecked")
+    void failOnStatusFalseLetsConditionReactToErrorStatus() {
+        // healthcheck.yaml pattern: probe a down service, alert on non-200
+        WIRE_MOCK.stubFor(get(urlEqualTo("/down")).willReturn(aResponse().withStatus(503)));
+        WIRE_MOCK.stubFor(com.github.tomakehurst.wiremock.client.WireMock
+                .post(urlEqualTo("/bottest-token/sendMessage"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"ok\": true}")));
+
+        postYaml("/api/workflows", """
+                name: healthcheck-pattern
+                trigger:
+                  webhook: { path: "health" }
+                steps:
+                  - name: probe
+                    action: http
+                    with: { method: GET, url: "%s/down", fail_on_status: false }
+                  - name: alert
+                    if: "{{ steps.probe.status != 200 }}"
+                    action: telegram
+                    with: { chat_id: "42", text: "ALERT: status {{ steps.probe.status }}" }
+                """.formatted(WIRE_MOCK.baseUrl()));
+
+        String executionId = (String) postJson("/hooks/health", Map.of()).getBody().get("executionId");
+
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(getExecution(executionId).get("status")).isEqualTo("SUCCEEDED"));
+
+        WIRE_MOCK.verify(1, postRequestedFor(urlEqualTo("/bottest-token/sendMessage"))
+                .withRequestBody(containing("ALERT: status 503")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void falseConditionSkipsStepAndExecutionSucceeds() {
         WIRE_MOCK.stubFor(get(urlEqualTo("/ok")).willReturn(aResponse()
                 .withStatus(200).withBody("{\"up\": true}")));

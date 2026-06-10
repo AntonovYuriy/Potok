@@ -6,8 +6,9 @@ import io.potok.definition.YamlDefinitionParser;
 import io.potok.execution.ExecutionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.TaskScheduler;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
@@ -46,7 +47,9 @@ public class CronTriggerScheduler {
         this.taskScheduler = taskScheduler;
     }
 
-    @EventListener(WorkflowsChangedEvent.class)
+    /** AFTER_COMMIT — see PollerScheduler: schedules must only see committed workflows. */
+    @TransactionalEventListener(value = WorkflowsChangedEvent.class,
+            phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public synchronized void onWorkflowsChanged() {
         refresh();
     }

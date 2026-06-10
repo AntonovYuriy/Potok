@@ -49,17 +49,25 @@ public class PollerService {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
+    private final TriggerLocks locks;
+
     public PollerService(HttpActionHandler http, PollStateRepository state,
-                         ExecutionService executions, TemplateResolver templates, Json json) {
+                         ExecutionService executions, TemplateResolver templates, Json json,
+                         TriggerLocks locks) {
         this.http = http;
         this.state = state;
         this.executions = executions;
         this.templates = templates;
         this.json = json;
+        this.locks = locks;
     }
 
     @Transactional
     public void pollHttp(Workflow workflow) {
+        if (!locks.tryAdvisoryLock(workflow.id())) {
+            log.info("poll_skipped_lock workflow={}", workflow.name());
+            return; // another replica is polling this workflow right now
+        }
         WorkflowDefinition.Poll poll = workflow.definition().trigger().poll();
         Map<String, Object> with = new HashMap<>(poll.http());
         with.put("fail_on_status", false); // any response is data for the poller
@@ -118,6 +126,10 @@ public class PollerService {
 
     @Transactional
     public void pollRss(Workflow workflow) {
+        if (!locks.tryAdvisoryLock(workflow.id())) {
+            log.info("poll_skipped_lock workflow={}", workflow.name());
+            return; // another replica is polling this workflow right now
+        }
         WorkflowDefinition.Rss rss = workflow.definition().trigger().rss();
         SyndFeed feed;
         try {

@@ -2,6 +2,25 @@
 import { api } from './api.js';
 
 const view = () => document.getElementById('view');
+
+/** Non-blocking error banner (e.g. enable-name conflicts) instead of raw alerts. */
+export function flash(message) {
+    document.querySelector('.flash')?.remove();
+    const banner = document.createElement('div');
+    banner.className = 'flash';
+    banner.textContent = `⚠️ ${message}`;
+    view().prepend(banner);
+    setTimeout(() => banner.remove(), 6000);
+}
+
+async function op(action, refresh) {
+    try {
+        await action();
+    } catch (e) {
+        flash(e.message);
+    }
+    refresh();
+}
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtTime = t => t ? new Date(t).toLocaleString() : '—';
 const duration = (a, b) => (a && b) ? `${((new Date(b) - new Date(a)) / 1000).toFixed(2)}s` : '';
@@ -44,18 +63,12 @@ export async function workflowList() {
             <tbody>${rows}</tbody>
         </table>`}`;
 
-    view().querySelectorAll('[data-run]').forEach(b => b.onclick = async () => {
-        await api(`/api/workflows/${b.dataset.run}/run`, { method: 'POST' });
-        workflowList();
-    });
-    view().querySelectorAll('[data-disable]').forEach(b => b.onclick = async () => {
-        await api(`/api/workflows/${b.dataset.disable}`, { method: 'DELETE' });
-        workflowList();
-    });
-    view().querySelectorAll('[data-enable]').forEach(b => b.onclick = async () => {
-        await api(`/api/workflows/${b.dataset.enable}/enable`, { method: 'POST' });
-        workflowList();
-    });
+    view().querySelectorAll('[data-run]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/workflows/${b.dataset.run}/run`, { method: 'POST' }), workflowList));
+    view().querySelectorAll('[data-disable]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/workflows/${b.dataset.disable}`, { method: 'DELETE' }), workflowList));
+    view().querySelectorAll('[data-enable]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/workflows/${b.dataset.enable}/enable`, { method: 'POST' }), workflowList));
 }
 
 export async function workflowDetail(id, page = 0) {
@@ -150,14 +163,10 @@ export async function dlqList() {
             <tbody>${rows}</tbody>
         </table>`}`;
 
-    view().querySelectorAll('[data-requeue]').forEach(b => b.onclick = async () => {
-        await api(`/api/dlq/${b.dataset.requeue}/requeue`, { method: 'POST' });
-        dlqList();
-    });
-    view().querySelectorAll('[data-delete]').forEach(b => b.onclick = async () => {
-        await api(`/api/dlq/${b.dataset.delete}`, { method: 'DELETE' });
-        dlqList();
-    });
+    view().querySelectorAll('[data-requeue]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/dlq/${b.dataset.requeue}/requeue`, { method: 'POST' }), dlqList));
+    view().querySelectorAll('[data-delete]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/dlq/${b.dataset.delete}`, { method: 'DELETE' }), dlqList));
 }
 
 export async function refreshDlqBadge() {

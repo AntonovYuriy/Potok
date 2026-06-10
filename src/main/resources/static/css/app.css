@@ -177,4 +177,12 @@ dialog input {
 }
 
 .toolbar { display: flex; gap: .5rem; margin: .5rem 0 1rem; align-items: center; }
+
+.flash {
+    background: color-mix(in srgb, var(--warn) 15%, var(--surface));
+    border: 1px solid var(--warn);
+    border-radius: var(--radius);
+    padding: .6rem 1rem;
+    margin-bottom: 1rem;
+}
 .empty { color: var(--muted); padding: 2rem; text-align: center; }

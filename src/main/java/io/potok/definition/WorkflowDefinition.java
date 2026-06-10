@@ -18,10 +18,25 @@ public record WorkflowDefinition(
         List<Step> steps) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Trigger(String cron, Webhook webhook) {
+    public record Trigger(String cron, Webhook webhook, Poll poll, Rss rss) {
     }
 
     public record Webhook(String path) {
+    }
+
+    /**
+     * HTTP poller: {@code fire_when} is either the literal "changed" (fire when
+     * the response body hash changes) or a condition over the response
+     * ({@code {status, body, headers}}) that fires on false→true transitions.
+     */
+    public record Poll(
+            Duration interval,
+            Map<String, Object> http,
+            @JsonProperty("fire_when") String fireWhen) {
+    }
+
+    /** RSS/Atom poller: one execution per new feed item, deduped by guid/link. */
+    public record Rss(Duration interval, String url) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

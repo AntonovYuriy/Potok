@@ -149,8 +149,12 @@ public class YamlDefinitionParser {
         }
         Object cron = map.get("cron");
         Object webhook = map.get("webhook");
-        if ((cron == null) == (webhook == null)) {
-            throw new InvalidDefinitionException("'trigger' must define exactly one of 'cron' or 'webhook'");
+        Object poll = map.get("poll");
+        Object rss = map.get("rss");
+        long defined = java.util.stream.Stream.of(cron, webhook, poll, rss).filter(java.util.Objects::nonNull).count();
+        if (defined != 1) {
+            throw new InvalidDefinitionException(
+                    "'trigger' must define exactly one of 'cron', 'webhook', 'poll' or 'rss'");
         }
         if (cron != null) {
             String expr = cron.toString().trim();
@@ -159,20 +163,61 @@ public class YamlDefinitionParser {
             } catch (IllegalArgumentException e) {
                 throw new InvalidDefinitionException("invalid cron expression '" + expr + "': " + e.getMessage(), e);
             }
-            return new WorkflowDefinition.Trigger(expr, null);
+            return new WorkflowDefinition.Trigger(expr, null, null, null);
         }
-        if (!(webhook instanceof Map<?, ?> webhookMap)) {
-            throw new InvalidDefinitionException("'trigger.webhook' must be a mapping with a 'path'");
+        if (webhook != null) {
+            if (!(webhook instanceof Map<?, ?> webhookMap)) {
+                throw new InvalidDefinitionException("'trigger.webhook' must be a mapping with a 'path'");
+            }
+            String path = stringField(webhookMap, "path");
+            if (path == null || path.isBlank()) {
+                throw new InvalidDefinitionException("'trigger.webhook.path' is required");
+            }
+            if (!path.matches("[a-zA-Z0-9_-]+")) {
+                throw new InvalidDefinitionException(
+                        "'trigger.webhook.path' may only contain letters, digits, '-' and '_'");
+            }
+            return new WorkflowDefinition.Trigger(null, new WorkflowDefinition.Webhook(path), null, null);
         }
-        String path = stringField(webhookMap, "path");
-        if (path == null || path.isBlank()) {
-            throw new InvalidDefinitionException("'trigger.webhook.path' is required");
+        if (poll != null) {
+            return new WorkflowDefinition.Trigger(null, null, parsePoll(poll), null);
         }
-        if (!path.matches("[a-zA-Z0-9_-]+")) {
+        return new WorkflowDefinition.Trigger(null, null, null, parseRss(rss));
+    }
+
+    @SuppressWarnings("unchecked")
+    private WorkflowDefinition.Poll parsePoll(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new InvalidDefinitionException("'trigger.poll' must be a mapping");
+        }
+        java.time.Duration interval = parseDuration("trigger", "poll.interval", map.get("interval"));
+        if (interval == null) {
+            throw new InvalidDefinitionException("'trigger.poll.interval' is required");
+        }
+        if (!(map.get("http") instanceof Map<?, ?> http) || stringField(http, "url") == null) {
+            throw new InvalidDefinitionException("'trigger.poll.http' must be a mapping with a 'url'");
+        }
+        String fireWhen = stringField(map, "fire_when");
+        if (fireWhen == null || fireWhen.isBlank()) {
             throw new InvalidDefinitionException(
-                    "'trigger.webhook.path' may only contain letters, digits, '-' and '_'");
+                    "'trigger.poll.fire_when' is required: \"changed\" or a condition expression");
         }
-        return new WorkflowDefinition.Trigger(null, new WorkflowDefinition.Webhook(path));
+        return new WorkflowDefinition.Poll(interval, (Map<String, Object>) http, fireWhen.trim());
+    }
+
+    private WorkflowDefinition.Rss parseRss(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new InvalidDefinitionException("'trigger.rss' must be a mapping");
+        }
+        java.time.Duration interval = parseDuration("trigger", "rss.interval", map.get("interval"));
+        if (interval == null) {
+            throw new InvalidDefinitionException("'trigger.rss.interval' is required");
+        }
+        String url = stringField(map, "url");
+        if (url == null || url.isBlank()) {
+            throw new InvalidDefinitionException("'trigger.rss.url' is required");
+        }
+        return new WorkflowDefinition.Rss(interval, url);
     }
 
     @SuppressWarnings("unchecked")

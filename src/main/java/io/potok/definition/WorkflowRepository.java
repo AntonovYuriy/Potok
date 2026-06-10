@@ -80,6 +80,16 @@ public class WorkflowRepository {
                 .list();
     }
 
+    public List<Workflow> findEnabledWithPollers() {
+        return jdbc.sql("""
+                        select * from workflow
+                        where enabled and (definition -> 'trigger' -> 'poll' is not null
+                                        or definition -> 'trigger' -> 'rss' is not null)
+                        """)
+                .query(rowMapper)
+                .list();
+    }
+
     public Optional<Workflow> findEnabledByWebhookPath(String path) {
         return jdbc.sql("""
                         select * from workflow

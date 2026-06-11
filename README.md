@@ -33,12 +33,14 @@ curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
 
 ## Use cases
 
-Seven ready-to-import automations — each one YAML file, importable from the
-dashboard (Help → Examples) or via curl. Full walkthroughs with sample
-messages: [docs/use-cases.md](docs/use-cases.md).
+Eight ready-to-use automations. Pick one in the dashboard (Help → Examples),
+fill a short form — URL, selector, schedule — and the workflow YAML is
+generated for you. Full walkthroughs with sample messages:
+[docs/use-cases.md](docs/use-cases.md).
 
 | Case | Trigger | File |
 |---|---|---|
+| Scheduled reminder (hello-world) | cron | [simple-reminder.yaml](examples/simple-reminder.yaml) |
 | Waste collection reminder (Warsaw, runs in production) | cron + `warsaw_waste` | [garbage-reminder.yaml](examples/garbage-reminder.yaml) |
 | Availability / price-tag watcher | poll + css extract | [availability-watcher.yaml](examples/availability-watcher.yaml) |
 | Exchange-rate alert (NBP) | poll + jsonpath, edge-triggered | [price-alert.yaml](examples/price-alert.yaml) |

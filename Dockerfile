@@ -9,6 +9,7 @@ RUN ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
 
 COPY src src
 COPY examples examples
+COPY templates templates
 RUN ./gradlew --no-daemon bootJar -x test
 
 # ---- runtime stage ----

@@ -1,19 +1,19 @@
 # Watch a product page: extract ONE element (price/stock badge) with a css
 # selector and ping Telegram when it changes. Page noise (ads, timestamps)
 # never causes false alerts — only the extracted text is compared.
-name: availability-watcher
+name: {{param.name}}
 trigger:
   poll:
-    interval: 10m
+    interval: {{param.interval}}
     http:
       method: GET
-      url: "https://shop.example.com/product/123"
+      url: "{{param.url}}"
     extract:
-      css: "span.availability"
+      css: "{{param.selector}}"
     fire_when: "changed"
 steps:
   - name: notify
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "👀 Наличие изменилось: {{ trigger.value }} — https://shop.example.com/product/123"
+      text: "👀 Наличие изменилось: {{ trigger.value }} — {{param.url}}"

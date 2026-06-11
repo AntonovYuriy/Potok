@@ -1,12 +1,34 @@
 [
   {
+    "id": "simple-reminder",
+    "title": "Scheduled reminder",
+    "problem": "The simplest automation: a Telegram message on a schedule — water the plants, stand up, take out the trash. A good first workflow.",
+    "trigger": "cron",
+    "actions": ["telegram"],
+    "file": "simple-reminder.yaml",
+    "sample": "Не забудь: выпить воды 💧",
+    "default_name": "simple-reminder",
+    "params": [
+      {"key": "cron", "label": "Schedule (cron)", "type": "cron", "required": true, "default": "0 9 * * *", "example": "0 9 * * *", "help": "5-field crontab in server time: minute hour day month weekday"},
+      {"key": "message", "label": "Message text", "type": "text", "required": true, "default": "Не забудь: выпить воды 💧", "example": "Полей цветы 🌱", "help": "Sent to Telegram as-is"},
+      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env — nothing to enter"}
+    ]
+  },
+  {
     "id": "garbage-reminder",
     "title": "Waste collection reminder",
-    "problem": "Never miss putting the bins out: checks the official Warsaw schedule every evening, messages you only when something is collected tomorrow.",
+    "problem": "Never miss putting the bins out: checks the official Warsaw schedule every morning and sends one line when something is collected today — silence otherwise.",
     "trigger": "cron",
     "actions": ["warsaw_waste", "telegram"],
     "file": "garbage-reminder.yaml",
-    "sample": "🗑️ Завтра вывоз (2026-06-16): Bio"
+    "sample": "🗑️ Сегодня вывоз: Bio",
+    "default_name": "garbage-reminder",
+    "params": [
+      {"key": "address_point_id", "label": "Address point id", "type": "string", "required": true, "default": "27086987", "example": "27086987", "help": "From the address autocomplete on warszawa19115.pl"},
+      {"key": "cron", "label": "Schedule (cron)", "type": "cron", "required": true, "default": "0 7 * * *", "example": "0 7 * * *", "help": "Morning check, server time (compose sets TZ=Europe/Warsaw)"},
+      {"key": "when", "label": "Day to check", "type": "string", "required": true, "default": "today", "example": "today", "help": "today or tomorrow"},
+      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+    ]
   },
   {
     "id": "availability-watcher",
@@ -15,7 +37,14 @@
     "trigger": "poll + css",
     "actions": ["telegram"],
     "file": "availability-watcher.yaml",
-    "sample": "👀 Наличие изменилось: In stock — https://shop.example.com/product/123"
+    "sample": "👀 Наличие изменилось: In stock — https://shop.example.com/product/123",
+    "default_name": "availability-watcher",
+    "params": [
+      {"key": "url", "label": "Page URL", "type": "url", "required": true, "default": "https://shop.example.com/product/123", "example": "https://shop.pl/coin/123", "help": "Address of the page to watch"},
+      {"key": "selector", "label": "CSS selector", "type": "string", "required": true, "default": "span.availability", "example": "span.price", "help": "First matching element's text is compared between polls"},
+      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "10m", "example": "30m", "help": "e.g. 30s, 10m, 1h"},
+      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+    ]
   },
   {
     "id": "price-alert",
@@ -24,16 +53,30 @@
     "trigger": "poll + jsonpath",
     "actions": ["telegram"],
     "file": "price-alert.yaml",
-    "sample": "💶 EUR/PLN 4.1850 — ниже порога 4.20, пора менять"
+    "sample": "💶 Курс 4.1850 — ниже порога 4.20, пора менять",
+    "default_name": "price-alert",
+    "params": [
+      {"key": "url", "label": "JSON API URL", "type": "url", "required": true, "default": "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json", "example": "https://api.nbp.pl/api/exchangerates/rates/a/usd/?format=json", "help": "Any endpoint returning JSON"},
+      {"key": "jsonpath", "label": "Value path (jsonpath)", "type": "string", "required": true, "default": "$.rates[0].mid", "example": "$.price", "help": "Which number in the response to watch"},
+      {"key": "threshold", "label": "Alert below", "type": "number", "required": true, "default": "4.20", "example": "4.00", "help": "Fires once when the value drops below this"},
+      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "1h", "example": "1h", "help": "NBP updates daily; hourly is plenty"},
+      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+    ]
   },
   {
     "id": "uptime-monitor",
     "title": "Website uptime monitor",
-    "problem": "Know your site is down before the users tell you: probes the URL every 5 minutes and alerts on a bad status code.",
+    "problem": "Know your site is down before the users tell you: probes the URL on a schedule and alerts on a bad status code.",
     "trigger": "cron",
     "actions": ["http", "telegram"],
     "file": "healthcheck.yaml",
-    "sample": "ALERT: healthcheck returned 503"
+    "sample": "ALERT: https://example.com returned 503",
+    "default_name": "uptime-monitor",
+    "params": [
+      {"key": "url", "label": "URL to probe", "type": "url", "required": true, "default": "https://httpbin.org/status/200", "example": "https://example.com/health", "help": "Endpoint that should answer 200"},
+      {"key": "cron", "label": "Schedule (cron)", "type": "cron", "required": true, "default": "*/5 * * * *", "example": "*/5 * * * *", "help": "Every 5 minutes by default"},
+      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+    ]
   },
   {
     "id": "rss-digest",
@@ -42,7 +85,13 @@
     "trigger": "rss",
     "actions": ["telegram"],
     "file": "rss-digest.yaml",
-    "sample": "📰 Show HN: Potok — workflow engine without a broker\\nhttps://news.ycombinator.com/item?id=…"
+    "sample": "📰 Show HN: Potok — workflow engine without a broker\\nhttps://news.ycombinator.com/item?id=…",
+    "default_name": "rss-digest",
+    "params": [
+      {"key": "feed_url", "label": "Feed URL", "type": "url", "required": true, "default": "https://hnrss.org/frontpage", "example": "https://example.com/rss.xml", "help": "RSS or Atom"},
+      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "15m", "example": "15m", "help": "e.g. 15m, 1h"},
+      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+    ]
   },
   {
     "id": "github-notify",
@@ -51,15 +100,28 @@
     "trigger": "webhook + HMAC",
     "actions": ["telegram"],
     "file": "github-notify.yaml",
-    "sample": "⬆️ yura -> AntonovYuriy/Potok: fix: validate conditions at create time"
+    "sample": "⬆️ yura -> AntonovYuriy/Potok: fix: validate conditions at create time",
+    "default_name": "github-notify",
+    "params": [
+      {"key": "path", "label": "Webhook path", "type": "string", "required": true, "default": "gh", "example": "gh", "help": "GitHub will POST to https://your-host/hooks/<path>"},
+      {"key": "secret_env", "label": "Secret env var NAME", "type": "string", "required": true, "default": "GITHUB_HOOK_SECRET", "example": "GITHUB_HOOK_SECRET", "help": "Name of the server env var holding the shared secret — set the same value in GitHub webhook settings; the secret itself is never typed here"},
+      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+    ]
   },
   {
     "id": "ssl-expiry",
     "title": "SSL certificate expiry check",
-    "problem": "Expired certificates take sites down silently: a daily check reads the served certificate and warns two weeks before it lapses.",
+    "problem": "Expired certificates take sites down silently: a daily check reads the served certificate and warns before it lapses.",
     "trigger": "cron",
     "actions": ["ssl_check", "telegram"],
     "file": "ssl-expiry.yaml",
-    "sample": "🔒 Сертификат example.com истекает через 13 дн. (2026-06-25T12:00:00Z)"
+    "sample": "🔒 Сертификат example.com истекает через 13 дн. (2026-06-25T12:00:00Z)",
+    "default_name": "ssl-expiry",
+    "params": [
+      {"key": "host", "label": "Host", "type": "string", "required": true, "default": "example.com", "example": "mysite.pl", "help": "Domain whose certificate to check (port 443)"},
+      {"key": "days", "label": "Warn when fewer days left than", "type": "number", "required": true, "default": "14", "example": "14", "help": "Alert threshold in days"},
+      {"key": "cron", "label": "Schedule (cron)", "type": "cron", "required": true, "default": "0 9 * * *", "example": "0 9 * * *", "help": "Once a day is enough"},
+      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+    ]
   }
 ]

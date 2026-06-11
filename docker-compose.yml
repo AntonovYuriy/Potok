@@ -19,6 +19,7 @@ services:
       POTOK_QUEUE_LOCK_TIMEOUT: ${POTOK_QUEUE_LOCK_TIMEOUT:-PT60S}
       POTOK_LOG_JSON: ${POTOK_LOG_JSON:-false}
       POTOK_DLQ_TELEGRAM: ${POTOK_DLQ_TELEGRAM:-false}
+      POTOK_ALLOW_PRIVATE_URLS: ${POTOK_ALLOW_PRIVATE_URLS:-false}
     depends_on:
       postgres:
         condition: service_healthy

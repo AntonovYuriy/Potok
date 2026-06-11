@@ -16,7 +16,7 @@ class WarsawWasteActionHandlerTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final WarsawWasteActionHandler handler =
-            new WarsawWasteActionHandler(mapper, Clock.systemUTC());
+            new WarsawWasteActionHandler(mapper, Clock.systemUTC(), new io.potok.common.UrlGuard(true));
 
     // real response shape from warszawa19115.pl
     private static final String API_JSON = """

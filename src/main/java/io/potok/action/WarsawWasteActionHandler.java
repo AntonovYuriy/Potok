@@ -60,15 +60,17 @@ public class WarsawWasteActionHandler implements ActionHandler {
             .build();
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final io.potok.common.UrlGuard urlGuard;
 
     @Autowired
-    public WarsawWasteActionHandler(ObjectMapper objectMapper) {
-        this(objectMapper, Clock.system(WARSAW));
+    public WarsawWasteActionHandler(ObjectMapper objectMapper, io.potok.common.UrlGuard urlGuard) {
+        this(objectMapper, Clock.system(WARSAW), urlGuard);
     }
 
-    WarsawWasteActionHandler(ObjectMapper objectMapper, Clock clock) {
+    WarsawWasteActionHandler(ObjectMapper objectMapper, Clock clock, io.potok.common.UrlGuard urlGuard) {
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.urlGuard = urlGuard;
     }
 
     @Override
@@ -89,6 +91,11 @@ public class WarsawWasteActionHandler implements ActionHandler {
             return StepResult.fail("'when' must be \"today\" or \"tomorrow\", got '" + when + "'");
         }
         String baseUrl = ctx.optionalString("base_url", DEFAULT_BASE_URL);
+        try {
+            urlGuard.check(baseUrl);
+        } catch (io.potok.common.UrlGuard.BlockedUrlException e) {
+            return StepResult.fail(e.getMessage());
+        }
 
         String url = baseUrl + "/harmonogramy-wywozu-odpadow"
                 + "?p_p_id=" + PORTLET

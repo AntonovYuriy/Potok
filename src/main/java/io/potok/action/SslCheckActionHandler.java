@@ -36,14 +36,16 @@ public class SslCheckActionHandler implements ActionHandler {
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
     private final Clock clock;
+    private final io.potok.common.UrlGuard urlGuard;
 
     @Autowired
-    public SslCheckActionHandler() {
-        this(Clock.systemUTC());
+    public SslCheckActionHandler(io.potok.common.UrlGuard urlGuard) {
+        this(Clock.systemUTC(), urlGuard);
     }
 
-    SslCheckActionHandler(Clock clock) {
+    SslCheckActionHandler(Clock clock, io.potok.common.UrlGuard urlGuard) {
         this.clock = clock;
+        this.urlGuard = urlGuard;
     }
 
     @Override
@@ -67,8 +69,11 @@ public class SslCheckActionHandler implements ActionHandler {
         }
 
         try {
+            urlGuard.checkHost(host);
             X509Certificate leaf = fetchLeafCertificate(host, port);
             return StepResult.ok(buildOutput(host, port, leaf, clock.instant()));
+        } catch (io.potok.common.UrlGuard.BlockedUrlException e) {
+            return StepResult.fail(e.getMessage());
         } catch (Exception e) {
             return StepResult.fail("ssl_check " + host + ":" + port + " failed: "
                     + io.potok.common.Errors.describe(e));

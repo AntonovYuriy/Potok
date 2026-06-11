@@ -161,6 +161,10 @@ public class TemplateResolver {
         int start = 0;
         for (int i = 0; i < expr.length(); i++) {
             char c = expr.charAt(i);
+            if (c == '\\' && (inSingle || inDouble)) {
+                i++; // escaped char inside a literal — never a quote toggle or operator
+                continue;
+            }
             if (c == '\'' && !inDouble) {
                 inSingle = !inSingle;
             } else if (c == '"' && !inSingle) {
@@ -188,6 +192,10 @@ public class TemplateResolver {
         boolean inDouble = false;
         for (int i = open; i < expr.length(); i++) {
             char c = expr.charAt(i);
+            if (c == '\\' && (inSingle || inDouble)) {
+                i++;
+                continue;
+            }
             if (c == '\'' && !inDouble) {
                 inSingle = !inSingle;
             } else if (c == '"' && !inSingle) {
@@ -290,7 +298,7 @@ public class TemplateResolver {
         if (token.length() >= 2
                 && (token.charAt(0) == '\'' || token.charAt(0) == '"')
                 && token.charAt(token.length() - 1) == token.charAt(0)) {
-            return token.substring(1, token.length() - 1);
+            return unescapeLiteral(token.substring(1, token.length() - 1));
         }
         if (NUMBER.matcher(token).matches()) {
             return new BigDecimal(token);
@@ -309,6 +317,23 @@ public class TemplateResolver {
                 return lookup(token, context);
             }
         }
+    }
+
+    /** Drops the backslash of {@code \"}, {@code \'} and {@code \\} inside a string literal. */
+    private static String unescapeLiteral(String literal) {
+        if (literal.indexOf('\\') < 0) {
+            return literal;
+        }
+        StringBuilder out = new StringBuilder(literal.length());
+        for (int i = 0; i < literal.length(); i++) {
+            char c = literal.charAt(i);
+            if (c == '\\' && i + 1 < literal.length()) {
+                out.append(literal.charAt(++i));
+            } else {
+                out.append(c);
+            }
+        }
+        return out.toString();
     }
 
     /** Walks a dot-path ({@code steps.fetch.status}) through nested maps and lists. */
@@ -372,6 +397,10 @@ public class TemplateResolver {
         boolean inDouble = false;
         for (int i = 0; i < expr.length() - 1; i++) {
             char c = expr.charAt(i);
+            if (c == '\\' && (inSingle || inDouble)) {
+                i++;
+                continue;
+            }
             if (c == '\'' && !inDouble) {
                 inSingle = !inSingle;
             } else if (c == '"' && !inSingle) {

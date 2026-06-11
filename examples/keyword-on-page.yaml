@@ -1,6 +1,7 @@
 # Watches the text of a page and pings you ONCE when a word or phrase shows
 # up. Edge-triggered: the message fires when the keyword appears, then stays
-# quiet until it disappears and appears again.
+# quiet until it disappears and appears again. Quotes in the keyword are
+# escaped by the |cond / |dq template filters.
 name: keyword-on-page
 trigger:
   poll:
@@ -10,7 +11,7 @@ trigger:
       url: "https://example.com/"
     extract:
       css: "body"
-    fire_when: "{{ contains(poll.value, 'Example Domain') }}"
+    fire_when: '{{ contains(poll.value, "Example Domain") }}'
 steps:
   - name: notify
     action: telegram

@@ -94,6 +94,22 @@ class TemplatesIntegrationTest extends IntegrationTestBase {
         }
     }
 
+    /** Quotes in user values must not break the rendered YAML or the condition. */
+    @Test
+    void keywordWithQuotesRendersValidWorkflow() throws Exception {
+        String tpl = Files.readString(Path.of("templates", "keyword-on-page.yaml.tpl"));
+        for (String keyword : new String[]{"O'Brien", "say \"hi\"", "mix 'of\" both"}) {
+            String rendered = TemplateRenderer.render(tpl, Map.of(
+                    "name", "kw-quotes", "url", "https://example.com/",
+                    "keyword", keyword, "interval", "30m"));
+            ResponseEntity<Map<String, Object>> created = postYaml("/api/workflows", rendered);
+            assertThat(created.getStatusCode())
+                    .as("keyword %s must render a valid workflow", keyword)
+                    .isEqualTo(HttpStatus.CREATED);
+            rest.delete("/api/workflows/" + created.getBody().get("id"));
+        }
+    }
+
     /** Gallery is ordered by simplicity; the local-specific custom-action example goes last. */
     @Test
     void galleryIsOrderedBySimplicity() throws Exception {

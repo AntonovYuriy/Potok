@@ -111,18 +111,20 @@ final class PreviewTexts {
         return "Would be skipped — depends on failed step \"" + failedStep + "\"";
     }
 
-    /** Poll-fetch summary: status plus what the extractor saw. */
+    /** Poll-fetch summary: status plus what the extractor saw ("element" for css, "value" for jsonpath). */
     static String pollFetchSummary(Object status, boolean hasExtract, Object extracted,
                                    WorkflowDefinition.Extract extract) {
         String base = "Fetched — status " + status;
         if (!hasExtract) {
             return base;
         }
-        String selector = extract.css() != null ? extract.css() : extract.jsonpath();
+        boolean isCss = extract.css() != null;
+        String selector = isCss ? extract.css() : extract.jsonpath();
         if (extracted == null) {
-            return base + ", but \"" + selector + "\" matched NOTHING — check the selector";
+            return base + ", but \"" + selector + "\" matched NOTHING — check the "
+                    + (isCss ? "selector" : "path");
         }
-        return base + ", element found: \"" + extracted + "\"";
+        return base + ", " + (isCss ? "element" : "value") + " found: \"" + extracted + "\"";
     }
 
     static String shorten(String url) {

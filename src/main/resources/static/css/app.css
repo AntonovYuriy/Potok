@@ -238,7 +238,7 @@ a.btn { text-decoration: none; display: inline-block; }
 .form-card { max-width: 560px; }
 .form-field { display: block; margin-bottom: 1rem; }
 .form-field span { display: block; font-weight: 600; margin-bottom: .25rem; }
-.form-field input, .form-field textarea {
+.form-field input, .form-field textarea, .form-field select {
     width: 100%;
     background: var(--bg);
     color: var(--text);

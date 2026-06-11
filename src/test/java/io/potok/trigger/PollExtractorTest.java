@@ -58,4 +58,23 @@ class PollExtractorTest {
         assertThat(PollExtractor.extract(css("span"), Map.of("json", true), null))
                 .isNull();
     }
+
+    @Test
+    void numberFlagParsesPriceTags() {
+        String html = "<html><body><span class='price'>249,99 zł</span></body></html>";
+        var extract = new WorkflowDefinition.Extract(null, "span.price", true);
+        assertThat(PollExtractor.extract(extract, html, html))
+                .isEqualTo(new java.math.BigDecimal("249.99"));
+    }
+
+    @Test
+    void parseNumberHandlesLocalesAndCurrencies() {
+        assertThat(PollExtractor.parseNumber("249,99 zł")).isEqualTo(new java.math.BigDecimal("249.99"));
+        assertThat(PollExtractor.parseNumber("$1,299.00")).isEqualTo(new java.math.BigDecimal("1299.00"));
+        assertThat(PollExtractor.parseNumber("1 234,50 PLN")).isEqualTo(new java.math.BigDecimal("1234.50"));
+        assertThat(PollExtractor.parseNumber("Price: 99")).isEqualTo(new java.math.BigDecimal("99"));
+        assertThat(PollExtractor.parseNumber(42)).isEqualTo(new java.math.BigDecimal("42"));
+        assertThat(PollExtractor.parseNumber("In stock!")).isNull();
+        assertThat(PollExtractor.parseNumber(null)).isNull();
+    }
 }

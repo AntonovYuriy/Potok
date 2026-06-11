@@ -33,7 +33,7 @@ class TemplatesIntegrationTest extends IntegrationTestBase {
     @Test
     void everyTemplateRendersMatchesExampleAndCreates() throws Exception {
         JsonNode manifest = manifest();
-        assertThat(manifest.size()).isGreaterThanOrEqualTo(8);
+        assertThat(manifest.size()).isGreaterThanOrEqualTo(13);
 
         for (JsonNode entry : manifest) {
             String id = entry.path("id").asText();
@@ -73,18 +73,36 @@ class TemplatesIntegrationTest extends IntegrationTestBase {
                 assertThat(param.path("key").asText()).isNotEmpty();
                 assertThat(param.path("label").asText()).isNotEmpty();
                 String type = param.path("type").asText();
-                assertThat(type).isIn("url", "string", "duration", "cron", "number", "text", "env");
+                assertThat(type).isIn("url", "string", "duration", "cron", "number", "text", "select", "env");
                 if (type.equals("env")) {
                     assertThat(param.path("env").asText()).isNotEmpty();
                 } else {
                     assertThat(param.hasNonNull("default")).as("%s.%s default", id, param.path("key")).isTrue();
                 }
+                if (type.equals("select")) {
+                    assertThat(param.path("options").isArray())
+                            .as("%s.%s options", id, param.path("key")).isTrue();
+                    assertThat(param.path("options").size()).isGreaterThan(1);
+                    boolean defaultInOptions = false;
+                    for (JsonNode option : param.path("options")) {
+                        defaultInOptions |= option.asText().equals(param.path("default").asText());
+                    }
+                    assertThat(defaultInOptions)
+                            .as("%s.%s default must be one of the options", id, param.path("key")).isTrue();
+                }
             }
         }
     }
 
+    /** Gallery is ordered by simplicity; the local-specific custom-action example goes last. */
     @Test
-    void simpleReminderIsFirstInGallery() throws Exception {
-        assertThat(manifest().get(0).path("id").asText()).isEqualTo("simple-reminder");
+    void galleryIsOrderedBySimplicity() throws Exception {
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        manifest().forEach(entry -> ids.add(entry.path("id").asText()));
+        assertThat(ids).containsExactly(
+                "simple-reminder", "json-threshold", "keyword-on-page", "price-drop",
+                "monthly-payment-reminder", "uptime-monitor", "release-watcher", "rss-digest",
+                "availability-watcher", "price-alert", "ssl-expiry", "github-notify",
+                "garbage-reminder");
     }
 }

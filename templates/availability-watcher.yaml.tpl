@@ -16,4 +16,4 @@ steps:
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "👀 Наличие изменилось: {{ trigger.value }} — {{param.url}}"
+      text: "👀 The page changed: {{ trigger.value }} — {{param.url}}"

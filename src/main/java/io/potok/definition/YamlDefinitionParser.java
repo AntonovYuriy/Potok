@@ -260,7 +260,11 @@ public class YamlDefinitionParser {
             throw new InvalidDefinitionException(
                     "'trigger.poll.extract' must define exactly one of 'jsonpath' or 'css'");
         }
-        return new WorkflowDefinition.Extract(jsonpath, css);
+        Object number = map.get("number");
+        if (number != null && !(number instanceof Boolean)) {
+            throw new InvalidDefinitionException("'trigger.poll.extract.number' must be true or false");
+        }
+        return new WorkflowDefinition.Extract(jsonpath, css, (Boolean) number);
     }
 
     private WorkflowDefinition.Rss parseRss(Object raw) {

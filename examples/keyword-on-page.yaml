@@ -1,0 +1,19 @@
+# Watches the text of a page and pings you ONCE when a word or phrase shows
+# up. Edge-triggered: the message fires when the keyword appears, then stays
+# quiet until it disappears and appears again.
+name: keyword-on-page
+trigger:
+  poll:
+    interval: 30m
+    http:
+      method: GET
+      url: "https://example.com/"
+    extract:
+      css: "body"
+    fire_when: "{{ contains(poll.value, 'Example Domain') }}"
+steps:
+  - name: notify
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "🔎 \"Example Domain\" just appeared on https://example.com/"

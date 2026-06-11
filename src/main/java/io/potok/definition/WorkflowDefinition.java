@@ -46,9 +46,18 @@ public record WorkflowDefinition(
      * Optional value extraction before compare/evaluate: jsonpath for JSON
      * responses, css selector (first match, text) for HTML. changed-mode then
      * hashes only the extracted value; expressions see it as {@code poll.value}.
+     * {@code number: true} additionally parses the extracted text as a number
+     * ("249,99 zł" → 249.99) so it can be compared in conditions.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Extract(String jsonpath, String css) {
+    public record Extract(String jsonpath, String css, Boolean number) {
+        public Extract(String jsonpath, String css) {
+            this(jsonpath, css, null);
+        }
+
+        public boolean asNumber() {
+            return Boolean.TRUE.equals(number);
+        }
     }
 
     /** RSS/Atom poller: one execution per new feed item, deduped by guid/link. */

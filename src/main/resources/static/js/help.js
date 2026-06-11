@@ -26,6 +26,9 @@ function validateParam(param, value) {
     if (!value || !value.trim()) {
         return param.required ? 'required' : null;
     }
+    if (param.type === 'select') {
+        return param.options.includes(value.trim()) ? null : `must be one of: ${param.options.join(' ')}`;
+    }
     const check = VALIDATORS[param.type];
     if (!check) return null;
     const result = check(value.trim());
@@ -91,6 +94,9 @@ async function caseDetail(id) {
         <div class="card">
             <h2>${esc(t.title)}</h2>
             <p>${esc(t.problem)}</p>
+            <p class="muted">What you'll need: ${esc(
+                t.params.filter(p => p.required && p.type !== 'env')
+                    .map(p => p.label.toLowerCase()).join(', ') || 'nothing — just a name')}.</p>
             <p class="muted">What arrives in Telegram:</p>
             <pre class="yaml">${esc(t.sample)}</pre>
             <details><summary class="muted">YAML preview (defaults)</summary>
@@ -118,6 +124,9 @@ async function useForm(id) {
             <span>${esc(p.label)}${p.required ? ' <em class="req">*</em>' : ''}</span>
             ${p.type === 'text'
                 ? `<textarea id="param-${p.key}" rows="2" placeholder="${esc(p.example ?? '')}">${esc(p.default ?? '')}</textarea>`
+                : p.type === 'select'
+                ? `<select id="param-${p.key}">${p.options.map(o =>
+                        `<option${o === p.default ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`
                 : `<input id="param-${p.key}" type="${inputType(p)}" step="any"
                        placeholder="${esc(p.example ?? '')}" value="${esc(p.default ?? '')}">`}
             <small class="muted">${esc(p.help ?? '')}</small>

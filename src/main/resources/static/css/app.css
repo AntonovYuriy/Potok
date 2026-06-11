@@ -243,3 +243,17 @@ a.btn { text-decoration: none; display: inline-block; }
     margin-bottom: 1rem;
 }
 .empty { color: var(--muted); padding: 2rem; text-align: center; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+.case-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.2rem;
+    cursor: pointer;
+    transition: border-color .15s;
+}
+.case-card:hover { border-color: var(--accent); }
+.case-card h3 { margin: 0 0 .4rem; font-size: 1rem; }
+.case-card p { margin: 0 0 .6rem; font-size: .88rem; }
+.tab-active { border-color: var(--accent); color: var(--accent); }

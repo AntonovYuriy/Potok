@@ -1,0 +1,33 @@
+{
+  "triggers": [
+    { "name": "cron", "syntax": "cron: \"0 19 * * *\"", "notes": "5-field crontab or 6-field (with seconds); re-read on change, no restart needed" },
+    { "name": "webhook", "syntax": "webhook: { path: \"my-hook\", hmac_secret_env: \"SECRET_ENV\" }", "notes": "POST /hooks/{path}; body = trigger payload; hmac_secret_env (optional) enforces X-Hub-Signature-256" },
+    { "name": "poll", "syntax": "poll: { interval: 5m, http: {method, url, headers}, extract: {jsonpath|css}, fire_when: \"changed\" | expression }", "notes": "first poll runs immediately, then every interval; \"changed\" compares the (extracted) value hash; expressions fire on false→true edges" },
+    { "name": "rss", "syntax": "rss: { interval: 15m, url: \"https://…\" }", "notes": "one execution per NEW item (guid/link dedupe, persisted); first poll baselines silently" }
+  ],
+  "stepFields": [
+    { "field": "name", "notes": "unique step id; outputs visible as steps.<name>.*" },
+    { "field": "action", "notes": "http | telegram | warsaw_waste | ssl_check | your own ActionHandler bean" },
+    { "field": "with", "notes": "action inputs; values support {{ }} templating and ${ENV}" },
+    { "field": "if", "notes": "condition; false → step SKIPPED (counts as satisfied for dependents)" },
+    { "field": "needs", "notes": "[a, b] — runs when ALL succeeded; omitted = previous step; [] = root; independent steps run in parallel" },
+    { "field": "retry", "notes": "{ max_attempts: 3, base_delay: 10s, max_delay: 10m } — exponential backoff, full jitter; exhausted → DLQ" }
+  ],
+  "conditions": {
+    "grammar": "expr := or; or := and ('||' and)*; and := unit ('&&' unit)*; unit := '(' expr ')' | a OP b | contains(x, y) | exists(path) | path",
+    "operators": "== != > < >= <= (numeric when both numbers, string otherwise)",
+    "functions": "contains(haystack, needle) — substring or list membership; exists(path) — non-null",
+    "validated": "syntax checked at create/update — malformed conditions are rejected with 400"
+  },
+  "templating": [
+    { "syntax": "{{ trigger.x.y }}", "notes": "webhook payload / poll response / rss item; poll extract value = trigger.value" },
+    { "syntax": "{{ steps.fetch.body.price }}", "notes": "outputs of steps listed (transitively) in needs" },
+    { "syntax": "${ENV_VAR}", "notes": "environment variable, resolved at execution time, never stored" }
+  ],
+  "actions": [
+    { "name": "http", "params": "method, url, headers, body, fail_on_status", "output": "{status, headers, body} — body parsed as JSON when possible; fail_on_status: false records non-2xx as success" },
+    { "name": "telegram", "params": "chat_id, text", "output": "{status, chat_id}; requires TELEGRAM_BOT_TOKEN env" },
+    { "name": "warsaw_waste", "params": "address_point_id, base_url", "output": "{tomorrow_date, tomorrow[], tomorrow_count, summary, upcoming[]} — Warsaw waste schedule" },
+    { "name": "ssl_check", "params": "host, port (443)", "output": "{host, port, days_left, not_after, subject, issuer} — reads the served TLS certificate, even expired ones" }
+  ]
+}

@@ -231,7 +231,21 @@ export async function editorView(id) {
 
     const textarea = document.getElementById('yaml-editor');
     const gutter = document.getElementById('gutter');
-    textarea.value = existing ? existing.yamlSource : EDITOR_TEMPLATE;
+    const imported = existing ? null : sessionStorage.getItem('potok-import-template');
+    if (imported) sessionStorage.removeItem('potok-import-template');
+    textarea.value = existing ? existing.yamlSource : (imported ?? EDITOR_TEMPLATE);
+
+    // surface what the user must fill in after importing a template
+    const placeholders = [...new Set([
+        ...textarea.value.matchAll(/\$\{([A-Z_][A-Z0-9_]*)\}/g),
+    ].map(m => m[0]))];
+    if (imported && placeholders.length) {
+        const note = document.createElement('div');
+        note.className = 'flash';
+        note.textContent = `Fill in before saving: ${placeholders.join(', ')} ` +
+            '(environment variables — set them on the server)';
+        view().insertBefore(note, view().children[1]);
+    }
 
     const syncGutter = () => {
         const lines = textarea.value.split('\n').length;

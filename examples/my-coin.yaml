@@ -5,7 +5,7 @@
 name: coin-watcher
 trigger:
   poll:
-    interval: 30m
+    interval: 5m
     http:
       method: GET
       url: "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"

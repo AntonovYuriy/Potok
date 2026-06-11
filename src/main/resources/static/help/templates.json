@@ -1,0 +1,65 @@
+[
+  {
+    "id": "garbage-reminder",
+    "title": "Waste collection reminder",
+    "problem": "Never miss putting the bins out: checks the official Warsaw schedule every evening, messages you only when something is collected tomorrow.",
+    "trigger": "cron",
+    "actions": ["warsaw_waste", "telegram"],
+    "file": "garbage-reminder.yaml",
+    "sample": "🗑️ Завтра вывоз (2026-06-16): Bio"
+  },
+  {
+    "id": "availability-watcher",
+    "title": "Availability / price-tag watcher",
+    "problem": "A product is sold out and the shop has no notify-me button: watch one element of the page (css selector) and get pinged the moment it changes.",
+    "trigger": "poll + css",
+    "actions": ["telegram"],
+    "file": "availability-watcher.yaml",
+    "sample": "👀 Наличие изменилось: In stock — https://shop.example.com/product/123"
+  },
+  {
+    "id": "price-alert",
+    "title": "Exchange-rate alert (NBP)",
+    "problem": "Buy euros when they are cheap: polls the Polish central bank's free JSON API hourly and fires once when the rate crosses your threshold.",
+    "trigger": "poll + jsonpath",
+    "actions": ["telegram"],
+    "file": "price-alert.yaml",
+    "sample": "💶 EUR/PLN 4.1850 — ниже порога 4.20, пора менять"
+  },
+  {
+    "id": "uptime-monitor",
+    "title": "Website uptime monitor",
+    "problem": "Know your site is down before the users tell you: probes the URL every 5 minutes and alerts on a bad status code.",
+    "trigger": "cron",
+    "actions": ["http", "telegram"],
+    "file": "healthcheck.yaml",
+    "sample": "ALERT: healthcheck returned 503"
+  },
+  {
+    "id": "rss-digest",
+    "title": "Morning RSS digest",
+    "problem": "Follow a feed without opening a reader: every new item becomes one Telegram message with the title and link, deduplicated forever.",
+    "trigger": "rss",
+    "actions": ["telegram"],
+    "file": "rss-digest.yaml",
+    "sample": "📰 Show HN: Potok — workflow engine without a broker\\nhttps://news.ycombinator.com/item?id=…"
+  },
+  {
+    "id": "github-notify",
+    "title": "GitHub push notification",
+    "problem": "Pushes to your repo land in Telegram, with the webhook cryptographically verified (HMAC) so nobody can spoof deliveries.",
+    "trigger": "webhook + HMAC",
+    "actions": ["telegram"],
+    "file": "github-notify.yaml",
+    "sample": "⬆️ yura -> AntonovYuriy/Potok: fix: validate conditions at create time"
+  },
+  {
+    "id": "ssl-expiry",
+    "title": "SSL certificate expiry check",
+    "problem": "Expired certificates take sites down silently: a daily check reads the served certificate and warns two weeks before it lapses.",
+    "trigger": "cron",
+    "actions": ["ssl_check", "telegram"],
+    "file": "ssl-expiry.yaml",
+    "sample": "🔒 Сертификат example.com истекает через 13 дн. (2026-06-25T12:00:00Z)"
+  }
+]

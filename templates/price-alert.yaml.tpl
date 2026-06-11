@@ -1,19 +1,19 @@
 # EUR/PLN drops below your threshold -> Telegram. NBP (Polish central bank)
 # publishes daily mid rates as free JSON. Edge-triggered: one alert when the
 # rate crosses the threshold, silence while it stays below.
-name: price-alert
+name: {{param.name}}
 trigger:
   poll:
-    interval: 1h
+    interval: {{param.interval}}
     http:
       method: GET
-      url: "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json"
+      url: "{{param.url}}"
     extract:
-      jsonpath: "$.rates[0].mid"
-    fire_when: "{{ poll.value < 4.20 }}"
+      jsonpath: "{{param.jsonpath}}"
+    fire_when: "{{ poll.value < {{param.threshold}} }}"
 steps:
   - name: notify
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "💶 Курс {{ trigger.value }} — ниже порога 4.20, пора менять"
+      text: "💶 Курс {{ trigger.value }} — ниже порога {{param.threshold}}, пора менять"

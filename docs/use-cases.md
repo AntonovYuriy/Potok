@@ -7,6 +7,26 @@ Placeholders like `${TELEGRAM_CHAT_ID}` are environment variables on the server.
 
 ---
 
+## 0. Scheduled reminder
+
+The simplest automation possible: a Telegram message on a schedule — water the
+plants, take a break, put the bins out. Two fields in the template form (cron +
+message) and you have your first workflow.
+
+```yaml
+name: simple-reminder
+trigger:
+  cron: "0 9 * * *"
+steps:
+  - name: remind
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "Не забудь: выпить воды 💧"
+```
+
+> Не забудь: выпить воды 💧
+
 ## 1. Waste collection reminder (Warsaw)
 
 You sort your waste, but the schedule is a PDF on a city website and every

@@ -41,10 +41,10 @@ class ExamplesIntegrationTest extends IntegrationTestBase {
     void helpGalleryMatchesShippedExamples() {
         List<Map<String, Object>> templates =
                 rest.getForObject("/help/templates.json", List.class);
-        assertThat(templates).hasSize(7);
+        assertThat(templates).hasSizeGreaterThanOrEqualTo(8);
 
         for (Map<String, Object> t : templates) {
-            assertThat(t).containsKeys("id", "title", "problem", "trigger", "actions", "file", "sample");
+            assertThat(t).containsKeys("id", "title", "problem", "trigger", "actions", "file", "sample", "default_name", "params");
             // the YAML each card imports is served from the jar
             ResponseEntity<String> yaml =
                     rest.getForEntity("/help/examples/" + t.get("file"), String.class);
@@ -52,6 +52,9 @@ class ExamplesIntegrationTest extends IntegrationTestBase {
                     .as("template %s file", t.get("id"))
                     .isEqualTo(HttpStatus.OK);
             assertThat(yaml.getBody()).contains("name:").contains("trigger:");
+            // the parameterized template behind the form is served too
+            assertThat(rest.getForEntity("/help/templates/" + t.get("id") + ".yaml.tpl", String.class)
+                    .getStatusCode()).as("tpl asset %s", t.get("id")).isEqualTo(HttpStatus.OK);
         }
 
         // reference asset present and structured

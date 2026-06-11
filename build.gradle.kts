@@ -40,12 +40,24 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-// examples ship inside the jar: the dashboard's Help section imports them —
-// single source of truth between examples/, the UI and docs
+// Templates are the single source of truth. They ship in the jar for the
+// Help form-import UI; examples/ are GENERATED from them (renderExamples)
+// with the manifest defaults, committed, and drift-checked by a test.
 tasks.processResources {
     from("examples") {
         into("static/help/examples")
     }
+    from("templates") {
+        into("static/help/templates")
+    }
+}
+
+tasks.register<JavaExec>("renderExamples") {
+    group = "build"
+    description = "Regenerate examples/ from templates/ with manifest defaults"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "io.potok.template.TemplateRenderer"
+    args(projectDir.absolutePath)
 }
 
 tasks.withType<Test> {

@@ -2,19 +2,19 @@
 # ssl_check connects, reads the served certificate (even an already-expired
 # one) and reports days_left — see its handler for a minimal example of
 # adding your own action to the engine.
-name: ssl-expiry
+name: {{param.name}}
 trigger:
-  cron: "0 9 * * *"
+  cron: "{{param.cron}}"
 steps:
   - name: check
     action: ssl_check
     with:
-      host: "example.com"
+      host: "{{param.host}}"
 
   - name: warn
     action: telegram
     needs: [check]
-    if: "{{ steps.check.days_left < 14 }}"
+    if: "{{ steps.check.days_left < {{param.days}} }}"
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
       text: "🔒 Сертификат {{ steps.check.host }} истекает через {{ steps.check.days_left }} дн. ({{ steps.check.not_after }})"

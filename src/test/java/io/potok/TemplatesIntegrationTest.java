@@ -1,0 +1,90 @@
+package io.potok;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.potok.template.TemplateRenderer;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Templates are the single source of truth. For every manifest entry:
+ * the .tpl exists, rendering it with the manifest defaults reproduces the
+ * committed example byte-for-byte (drift guard), and the result is accepted
+ * by the live create API. Replaces the old examples-validity test.
+ */
+class TemplatesIntegrationTest extends IntegrationTestBase {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private JsonNode manifest() throws Exception {
+        return MAPPER.readTree(Files.readString(
+                Path.of("src/main/resources/static/help/templates.json")));
+    }
+
+    @Test
+    void everyTemplateRendersMatchesExampleAndCreates() throws Exception {
+        JsonNode manifest = manifest();
+        assertThat(manifest.size()).isGreaterThanOrEqualTo(8);
+
+        for (JsonNode entry : manifest) {
+            String id = entry.path("id").asText();
+            Path tpl = Path.of("templates", id + ".yaml.tpl");
+            assertThat(tpl).as("template file for %s", id).exists();
+
+            String rendered = TemplateRenderer.render(
+                    Files.readString(tpl), TemplateRenderer.defaults(entry));
+            assertThat(rendered).as("no unrendered params in %s", id)
+                    .doesNotContain("{{param.");
+
+            // drift guard: committed example == template + defaults
+            Path example = Path.of("examples", entry.path("file").asText());
+            assertThat(rendered)
+                    .as("examples/%s must equal rendered template %s — run ./gradlew renderExamples",
+                            entry.path("file").asText(), id)
+                    .isEqualTo(Files.readString(example));
+
+            // and the live API accepts it
+            ResponseEntity<Map<String, Object>> created = postYaml("/api/workflows", rendered);
+            assertThat(created.getStatusCode())
+                    .as("rendered template %s must create", id)
+                    .isEqualTo(HttpStatus.CREATED);
+            rest.delete("/api/workflows/" + created.getBody().get("id"));
+        }
+    }
+
+    @Test
+    void manifestEntriesAreFormReady() throws Exception {
+        Set<String> ids = new HashSet<>();
+        for (JsonNode entry : manifest()) {
+            String id = entry.path("id").asText();
+            assertThat(ids.add(id)).as("unique id %s", id).isTrue();
+            assertThat(entry.path("default_name").asText()).as("%s default_name", id).isNotEmpty();
+            assertThat(entry.path("params").size()).as("%s has params", id).isGreaterThan(0);
+            for (JsonNode param : entry.path("params")) {
+                assertThat(param.path("key").asText()).isNotEmpty();
+                assertThat(param.path("label").asText()).isNotEmpty();
+                String type = param.path("type").asText();
+                assertThat(type).isIn("url", "string", "duration", "cron", "number", "text", "env");
+                if (type.equals("env")) {
+                    assertThat(param.path("env").asText()).isNotEmpty();
+                } else {
+                    assertThat(param.hasNonNull("default")).as("%s.%s default", id, param.path("key")).isTrue();
+                }
+            }
+        }
+    }
+
+    @Test
+    void simpleReminderIsFirstInGallery() throws Exception {
+        assertThat(manifest().get(0).path("id").asText()).isEqualTo("simple-reminder");
+    }
+}

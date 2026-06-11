@@ -235,6 +235,33 @@ a.btn { text-decoration: none; display: inline-block; }
     padding: .35rem .7rem;
 }
 
+.form-card { max-width: 560px; }
+.form-field { display: block; margin-bottom: 1rem; }
+.form-field span { display: block; font-weight: 600; margin-bottom: .25rem; }
+.form-field input, .form-field textarea {
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: .45rem .7rem;
+    font-family: inherit;
+}
+.form-field textarea { font-family: var(--mono); }
+.form-field small { display: block; margin-top: .2rem; }
+.field-error { color: var(--fail); }
+.req { color: var(--fail); font-style: normal; }
+.env-note {
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    color: var(--muted);
+    padding: .5rem .8rem;
+    margin-bottom: 1rem;
+    font-size: .88rem;
+}
+.tab-active { border-color: var(--accent); color: var(--accent); }
+
 .flash {
     background: color-mix(in srgb, var(--warn) 15%, var(--surface));
     border: 1px solid var(--warn);

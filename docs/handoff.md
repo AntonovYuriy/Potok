@@ -1,8 +1,12 @@
 # Handoff
 
-_Last updated: 2026-06-11 (M5.3 done)._
+_Last updated: 2026-06-11 (M5.4 done)._
 
 ## Current state
+
+- **M5.4 done — audit nits** (2026-06-11, PR #13, squash `8d4ffcd`, 184 tests):
+  - Quote-safe template params: render filters `{{param.x|cond}}` (double-quoted condition literal inside single-quoted YAML: `\`/`"` backslash-escaped, `'` doubled) and `{{param.x|dq}}` (double-quoted YAML scalar) — Java TemplateRenderer + JS twin in help.js, identical semantics. TemplateResolver understands backslash escapes inside condition string literals (quote tracking skips them, operands unescape). keyword-on-page uses both; O'Brien / say "hi" / mixed-quote keywords create 2xx (integration test).
+  - garbage-reminder `when` → select (today|tomorrow). Preview poll-fetch wording: jsonpath says "value found"/"check the path" (css keeps element/selector). CI docker job: `concurrency: ghcr-publish, cancel-in-progress: false` — GHCR unknown-blob race closed. templates.json now pretty-printed.
 
 - **M5.3 done — 13-card human-first catalog** (2026-06-11, PR #12, squash `cfea4a5`, 178 tests):
   - 5 new templates: json-threshold (universal "watch a number from any API", 2nd in gallery, select param for comparison), keyword-on-page (contains() over body text, edge-triggered), monthly-payment-reminder (renders `0 H D * *`), release-watcher (rss on github releases.atom), price-drop (css + `number: true` + numeric fire_when).
@@ -88,8 +92,6 @@ _Last updated: 2026-06-11 (M5.3 done)._
 - UI editor is a plain textarea — no YAML syntax highlighting (deliberate: no build step).
 - cron_fire claims assume minute granularity — a 6-field cron with seconds would dedupe to 1 fire/min across replicas (single instance unaffected).
 - `renderTemplate` exists twice (Java `TemplateRenderer` + JS twin in help.js) — kept in sync by the drift test only at the Java end; JS regex must match `PARAM` pattern if it ever changes.
-- Template forms: select type exists since M5.3 (used for comparison operators), but garbage-reminder `when: today|tomorrow` is still a free string field — could become select.
-- keyword-on-page: keyword is interpolated into single quotes inside `contains()` — an apostrophe in the keyword breaks the condition (help text says to avoid quotes).
 - Preview executes the poll fetch but evaluates `fire_when` informationally only — it cannot show "would fire" for changed-mode (needs two observations by definition).
 - UrlGuard checks the initial URL only: redirect chains are followed unguarded, DNS rebinding not addressed (documented in README).
 

@@ -185,6 +185,17 @@ Plaintext is shown once; only SHA-256 hashes are stored; revocation is
 immediate. All of `/api/**` accepts root key or any active token via the
 `X-API-Key` header — except `POST /api/admin/purge`, which is root-only.
 
+**SSRF guard** — `http` steps, pollers and previews call user-supplied URLs,
+so Potok resolves the target host first and refuses loopback, private
+(RFC1918), link-local (including the `169.254.169.254` cloud metadata
+endpoint) and IPv6 unique-local addresses with a clear error. Self-hosting
+Potok to automate your *own* internal services is a legitimate setup — set
+`POTOK_ALLOW_PRIVATE_URLS=true` to turn the guard off, and understand the
+trade-off: anyone who can create workflows on that instance can then probe
+anything the server can reach. Honest limitations either way: the check runs
+on the initial URL only (a redirect chain is not re-checked) and a DNS answer
+that changes between check and request (DNS rebinding) is not caught.
+
 **Webhook signatures** — set `trigger.webhook.hmac_secret_env: "MY_SECRET"`
 and exports `MY_SECRET` on the server. Deliveries must then carry
 `X-Hub-Signature-256: sha256=<hex HMAC-SHA256 of the raw body>` — exactly what
@@ -209,6 +220,16 @@ validation errors, **version history with rollback**, execution step timeline
 Auth-aware: `/api/meta` (public) tells the UI whether to prompt for a key.
 Open views poll every 7s.
 
+**Preview — "what would happen right now".** Both the template form and the
+YAML editor have a *Preview ▶* button: the workflow runs once, synchronously,
+in dry-run mode. Read-only calls (http GET, the poll fetch, `ssl_check`,
+`warsaw_waste`) execute for real; side effects don't — the Telegram message is
+rendered and shown but **not sent**, non-GET http is reported as "would send
+POST to …". Conditions are evaluated against live data ("NOT met right now —
+current: 249"), poll triggers get a plain-language line about when they
+actually fire, and nothing is persisted: no workflow, no execution, no poll
+state. Limits: 10s wall clock, 10 steps, single attempt per step.
+
 ## REST API
 
 | Method & path | Description |
@@ -218,6 +239,7 @@ Open views poll every 7s.
 | `PUT /api/workflows/{id}` | update = new version; re-enables |
 | `DELETE /api/workflows/{id}` · `POST /{id}/enable` | soft disable / enable |
 | `POST /api/workflows/{id}/run` | manual run, 202 |
+| `POST /api/preview` | dry run of a YAML body: real read-only fetches, simulated side effects, nothing persisted |
 | `GET /api/workflows/{id}/versions` · `POST .../versions/{n}/rollback` | history / rollback |
 | `POST /hooks/{path}` | webhook trigger (signature-checked when configured) |
 | `GET /api/executions?workflowId=&page=&size=` · `GET /{id}` | history / step detail |
@@ -245,6 +267,8 @@ Errors are RFC 7807 `application/problem+json`.
 | `POTOK_CRON_REFRESH_INTERVAL` | `PT30S` | trigger schedules re-read |
 | `POTOK_RETENTION_DAYS` | `30` | nightly purge of finished executions |
 | `POTOK_DLQ_TELEGRAM` | `false` | DLQ Telegram alerts |
+| `POTOK_ALLOW_PRIVATE_URLS` | `false` | disable the SSRF guard (see Security) |
+| `POTOK_PREVIEW_TIMEOUT` | `PT10S` | wall-clock budget for `/api/preview` |
 | `POTOK_LOG_JSON` | `false` | structured JSON logs |
 | `POTOK_TELEGRAM_API_BASE` | `https://api.telegram.org` | Bot API base (tests/self-hosted) |
 

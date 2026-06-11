@@ -3,6 +3,7 @@
 // (parameterized sources), /help/examples/* (rendered previews) — all generated
 // from the same templates/ directory that feeds examples/ and the docs.
 import { apiYaml } from './api.js';
+import { runPreview } from './preview.js';
 
 const view = () => document.getElementById('view');
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -138,10 +139,12 @@ async function useForm(id) {
             <div id="form-error" class="editor-error" hidden></div>
             <div class="toolbar">
                 <button id="create-btn">Create workflow</button>
+                <button id="preview-btn">Preview ▶ what would happen now</button>
                 <a class="btn" href="#" id="advanced-link">Advanced: edit YAML</a>
                 <a class="btn" href="#/help/${id}">Cancel</a>
             </div>
-        </div>`;
+        </div>
+        <div id="preview-result"></div>`;
 
     const collect = () => {
         const values = { name: document.getElementById('param-name').value.trim() };
@@ -175,6 +178,12 @@ async function useForm(id) {
             errorBox.hidden = false;
         }
     };
+    // dry run with the form's current values — results inline, nothing saved or sent
+    document.getElementById('preview-btn').onclick = () => {
+        const values = collect();
+        if (!validate(values)) return;
+        runPreview(renderTemplate(tpl, values), document.getElementById('preview-result'));
+    };
     // escape hatch: same values, but through the full editor (today's M5 flow)
     document.getElementById('advanced-link').onclick = e => {
         e.preventDefault();
@@ -189,7 +198,8 @@ async function renderReference() {
         `<tr>${cols.map(c => `<td>${c === 'syntax' || c === 'params' || c === 'output'
             ? `<code>${esc(i[c])}</code>` : esc(i[c])}</td>`).join('')}</tr>`).join('');
     document.getElementById('help-body').innerHTML = `
-        <p class="muted">Templates are forms now: pick one in Examples, fill the fields, done — YAML is generated for you.</p>
+        <p class="muted">Templates are forms now: pick one in Examples, fill the fields, done — YAML is generated for you.
+        Preview ▶ runs the workflow once in dry-run mode: read-only fetches happen for real, messages are shown but not sent, nothing is saved.</p>
         <div class="card"><h2>Triggers</h2>
             <table><thead><tr><th>Type</th><th>Syntax</th><th>Notes</th></tr></thead>
             <tbody>${rows(ref.triggers, ['name', 'syntax', 'notes'])}</tbody></table></div>

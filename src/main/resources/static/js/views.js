@@ -1,5 +1,6 @@
 // View renderers. Each returns nothing; they write into #view.
 import { api, apiYaml } from './api.js';
+import { runPreview } from './preview.js';
 
 const view = () => document.getElementById('view');
 
@@ -226,8 +227,10 @@ export async function editorView(id) {
         <div id="editor-error" class="editor-error" hidden></div>
         <div class="toolbar">
             <button id="save-btn">${existing ? 'Save (new version)' : 'Create'}</button>
+            <button id="preview-btn">Preview ▶ what would happen now</button>
             <a class="btn" href="${existing ? `#/wf/${id}` : '#/'}">Cancel</a>
-        </div>`;
+        </div>
+        <div id="preview-result"></div>`;
 
     const textarea = document.getElementById('yaml-editor');
     const gutter = document.getElementById('gutter');
@@ -262,6 +265,9 @@ export async function editorView(id) {
         }
     });
     syncGutter();
+
+    document.getElementById('preview-btn').onclick = () =>
+        runPreview(textarea.value, document.getElementById('preview-result'));
 
     document.getElementById('save-btn').onclick = async () => {
         const errorBox = document.getElementById('editor-error');

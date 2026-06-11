@@ -31,9 +31,11 @@ public class HttpActionHandler implements ActionHandler {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
     private final ObjectMapper objectMapper;
+    private final io.potok.common.UrlGuard urlGuard;
 
-    public HttpActionHandler(ObjectMapper objectMapper) {
+    public HttpActionHandler(ObjectMapper objectMapper, io.potok.common.UrlGuard urlGuard) {
         this.objectMapper = objectMapper;
+        this.urlGuard = urlGuard;
     }
 
     @Override
@@ -45,6 +47,12 @@ public class HttpActionHandler implements ActionHandler {
     public StepResult execute(StepContext ctx) {
         String method = ctx.optionalString("method", "GET").toUpperCase(Locale.ROOT);
         String url = ctx.requireString("url");
+
+        try {
+            urlGuard.check(url);
+        } catch (io.potok.common.UrlGuard.BlockedUrlException e) {
+            return StepResult.fail(e.getMessage());
+        }
 
         HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(URI.create(url))

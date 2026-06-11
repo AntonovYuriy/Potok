@@ -40,6 +40,14 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// examples ship inside the jar: the dashboard's Help section imports them —
+// single source of truth between examples/, the UI and docs
+tasks.processResources {
+    from("examples") {
+        into("static/help/examples")
+    }
+}
+
 tasks.withType<Test> {
     useJUnitPlatform()
     // Path of the docker socket as seen by the docker daemon's host (VM for colima/Docker Desktop,

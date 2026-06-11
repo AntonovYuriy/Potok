@@ -31,6 +31,22 @@ curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
      localhost:8080/api/workflows
 ```
 
+## Use cases
+
+Seven ready-to-import automations — each one YAML file, importable from the
+dashboard (Help → Examples) or via curl. Full walkthroughs with sample
+messages: [docs/use-cases.md](docs/use-cases.md).
+
+| Case | Trigger | File |
+|---|---|---|
+| Waste collection reminder (Warsaw, runs in production) | cron + `warsaw_waste` | [garbage-reminder.yaml](examples/garbage-reminder.yaml) |
+| Availability / price-tag watcher | poll + css extract | [availability-watcher.yaml](examples/availability-watcher.yaml) |
+| Exchange-rate alert (NBP) | poll + jsonpath, edge-triggered | [price-alert.yaml](examples/price-alert.yaml) |
+| Website uptime monitor | cron + http | [healthcheck.yaml](examples/healthcheck.yaml) |
+| Morning RSS digest | rss, per-item dedupe | [rss-digest.yaml](examples/rss-digest.yaml) |
+| GitHub push notification | signed webhook (HMAC) | [github-notify.yaml](examples/github-notify.yaml) |
+| SSL certificate expiry check | cron + `ssl_check` | [ssl-expiry.yaml](examples/ssl-expiry.yaml) |
+
 ## Architecture
 
 ```mermaid

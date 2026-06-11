@@ -1,9 +1,16 @@
 # Handoff
 
-_Last updated: 2026-06-11 (M5 done)._
+_Last updated: 2026-06-11 (M5.1 done)._
 
 ## Current state
 
+- **M5.1 done — parameterized templates, form-based import** (2026-06-11, PR #10, squash `e9b06d4`, 147 tests):
+  - `templates/*.yaml.tpl` (8, incl. new `simple-reminder` — cron+message, first in the gallery) with `{{param.key}}` placeholders are the single source of truth. `examples/` is generated: `./gradlew renderExamples` renders each template with its `templates.json` defaults. Drift impossible — `TemplatesIntegrationTest` re-renders every template, asserts byte-equality with the committed example, then creates it via the API (2xx).
+  - `templates.json`: per-template `default_name` + typed `params` (`url|string|duration|cron|number|text|env`). `env` params never ask for input — rendered as locked notes in the form.
+  - Help UI: card → Use template → typed form (client-side validation: url/duration/cron/number; API errors 400/409 surfaced inline) → YAML rendered in JS (`renderTemplate` twin of `TemplateRenderer`) → existing create API → navigate to workflow. "Advanced: edit YAML" escape hatch drops rendered YAML into the editor (M5 flow).
+  - Dockerfile: `COPY templates templates` — `.tpl` assets 404'd in the container while tests passed from classpath (same bug class as M5's missing examples COPY; caught in live verify again).
+  - Fixed M5 desync: garbage card text/sample now match `when: today` morning semantics ("Сегодня вывоз: Bio").
+  - Live-verified (compose, real Telegram token): availability-watcher with form values against a local page — baseline quiet, badge flip fired exactly 1 execution, real message delivered; simple-reminder created from the form, manual run SUCCEEDED, real message delivered. demo.gif re-recorded with the form flow.
 - **M5 done — showcase** (2026-06-11, PR #8, squash `ba05bf5`, 132 tests):
   - Use-case library: 7 importable automations (examples/ + docs/use-cases.md, problem → YAML → sample message). Flagship garbage-reminder live-verified against the real Warsaw API incl. a real delivered Telegram message.
   - New `ssl_check` action (~100 lines, trust-all by design — inspects expired/self-signed certs, outputs days_left/not_after/subject/issuer) — the minimal "write your own action" template.
@@ -67,6 +74,8 @@ _Last updated: 2026-06-11 (M5 done)._
 - Conditions: no `!` negation, no arithmetic; `contains` is case-sensitive.
 - UI editor is a plain textarea — no YAML syntax highlighting (deliberate: no build step).
 - cron_fire claims assume minute granularity — a 6-field cron with seconds would dedupe to 1 fire/min across replicas (single instance unaffected).
+- `renderTemplate` exists twice (Java `TemplateRenderer` + JS twin in help.js) — kept in sync by the drift test only at the Java end; JS regex must match `PARAM` pattern if it ever changes.
+- Template forms have no select/enum param type (e.g. `when: today|tomorrow` is a free string field).
 
 ## Verified 2026-06-10 (M1)
 

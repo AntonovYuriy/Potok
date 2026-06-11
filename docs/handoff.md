@@ -1,9 +1,14 @@
 # Handoff
 
-_Last updated: 2026-06-10 (M4.1 done)._
+_Last updated: 2026-06-11 (M5 done)._
 
 ## Current state
 
+- **M5 done — showcase** (2026-06-11, PR #8, squash `ba05bf5`, 132 tests):
+  - Use-case library: 7 importable automations (examples/ + docs/use-cases.md, problem → YAML → sample message). Flagship garbage-reminder live-verified against the real Warsaw API incl. a real delivered Telegram message.
+  - New `ssl_check` action (~100 lines, trust-all by design — inspects expired/self-signed certs, outputs days_left/not_after/subject/issuer) — the minimal "write your own action" template.
+  - Dashboard Help: Examples tab (cards → deep-linked detail #/help/<id> → one-click Import into the editor with a placeholder checklist) + YAML reference cheat-sheet. Single source: examples/ is copied into jar resources at build (templates.json/reference.json drive the UI); Dockerfile now copies examples/ into the build stage (was a container-only 404 — caught in live verify).
+  - README: use-case table; demo.gif re-recorded with the Help flow.
 - **M4.1 done — repository cleanup + audit gap fixes** (2026-06-10):
   - History rewritten (git filter-repo): local tooling configuration removed from every commit; full-history sweep clean in a fresh clone (0 matches, 133 tracked files); new root commit `2169a18`, force-pushed; CI green on the rewritten main, image republished. Local-only ignores live in `.git/info/exclude` (re-add on a fresh machine if you keep tooling files in the working copy).
   - Condition validation at create/update (PR #7, squash `cdbe96e`): malformed `if:` / `fire_when:` (dangling `&&`, unbalanced parens) → 400 with step name; pure syntax walk, no evaluation, so runtime short-circuiting can't hide errors.

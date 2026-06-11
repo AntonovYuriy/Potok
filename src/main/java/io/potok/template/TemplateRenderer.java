@@ -16,13 +16,23 @@ import java.util.regex.Pattern;
  * templating — only the {@code param.} namespace is substituted, everything
  * else passes through untouched.
  *
+ * Filters make user text safe in quoted contexts (a quote in a keyword must
+ * not break the YAML or the condition):
+ * - {@code {{param.x|cond}}} — value lands inside a DOUBLE-quoted condition
+ *   string literal within a SINGLE-quoted YAML scalar: backslash and double
+ *   quote get backslash-escaped (condition layer), single quote is doubled
+ *   (YAML single-quote layer).
+ * - {@code {{param.x|dq}}} — value lands inside a double-quoted YAML scalar:
+ *   backslash and double quote get backslash-escaped.
+ *
  * Also a CLI ({@link #main}): regenerates examples/ from templates/ using each
  * manifest entry's defaults — examples are committed, and an integration test
  * fails if they drift from the templates.
  */
 public final class TemplateRenderer {
 
-    private static final Pattern PARAM = Pattern.compile("\\{\\{param\\.([A-Za-z0-9_]+)}}");
+    private static final Pattern PARAM =
+            Pattern.compile("\\{\\{param\\.([A-Za-z0-9_]+)(?:\\|(cond|dq))?}}");
 
     private TemplateRenderer() {
     }
@@ -36,10 +46,22 @@ public final class TemplateRenderer {
             if (value == null) {
                 throw new IllegalArgumentException("missing template parameter '" + key + "'");
             }
-            matcher.appendReplacement(out, Matcher.quoteReplacement(value));
+            matcher.appendReplacement(out, Matcher.quoteReplacement(escape(value, matcher.group(2))));
         }
         matcher.appendTail(out);
         return out.toString();
+    }
+
+    static String escape(String value, String filter) {
+        if (filter == null) {
+            return value;
+        }
+        String escaped = value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return switch (filter) {
+            case "cond" -> escaped.replace("'", "''");
+            case "dq" -> escaped;
+            default -> throw new IllegalArgumentException("unknown template filter '" + filter + "'");
+        };
     }
 
     /** Defaults for a manifest entry: every non-env param's default plus the workflow name. */

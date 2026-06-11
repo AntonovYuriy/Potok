@@ -32,6 +32,11 @@ jobs:
   docker:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Serialize GHCR pushes: two quick main merges otherwise race on the
+    # :latest blobs ("unknown blob"). Queue, never cancel a publish mid-push.
+    concurrency:
+      group: ghcr-publish
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

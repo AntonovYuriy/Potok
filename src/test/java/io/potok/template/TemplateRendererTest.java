@@ -35,6 +35,25 @@ class TemplateRendererTest {
     }
 
     @Test
+    void condFilterEscapesQuotesForConditionInsideSingleQuotedYaml() {
+        String tpl = "fire_when: '{{ contains(poll.value, \"{{param.keyword|cond}}\") }}'";
+        assertThat(TemplateRenderer.render(tpl, java.util.Map.of("keyword", "O'Brien")))
+                .isEqualTo("fire_when: '{{ contains(poll.value, \"O''Brien\") }}'");
+        assertThat(TemplateRenderer.render(tpl, java.util.Map.of("keyword", "say \"hi\"")))
+                .isEqualTo("fire_when: '{{ contains(poll.value, \"say \\\"hi\\\"\") }}'");
+    }
+
+    @Test
+    void dqFilterEscapesForDoubleQuotedYaml() {
+        String tpl = "text: \"x {{param.keyword|dq}} y\"";
+        assertThat(TemplateRenderer.render(tpl, java.util.Map.of("keyword", "say \"hi\"")))
+                .isEqualTo("text: \"x say \\\"hi\\\" y\"");
+        assertThat(TemplateRenderer.render(tpl, java.util.Map.of("keyword", "O'Brien")))
+                .isEqualTo("text: \"x O'Brien y\"");
+        assertThat(TemplateRenderer.escape("a\\b", "dq")).isEqualTo("a\\\\b");
+    }
+
+    @Test
     void missingParamThrows() {
         assertThatThrownBy(() -> TemplateRenderer.render("x: {{param.absent}}", Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)

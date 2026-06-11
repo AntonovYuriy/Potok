@@ -221,4 +221,27 @@ class TemplateResolverTest {
     void quotedOperatorIsNotSplit() {
         assertThat(resolver.evaluateCondition("{{ trigger.user == 'a==b' }}", context)).isFalse();
     }
+
+    @Test
+    void conditionLiteralWithApostropheInsideDoubleQuotes() {
+        TemplateResolver resolver = new TemplateResolver(name -> null);
+        java.util.Map<String, Object> ctx = java.util.Map.of(
+                "poll", java.util.Map.of("value", "Lineup: O'Brien, more"));
+        assertThat(resolver.evaluateCondition(
+                "{{ contains(poll.value, \"O'Brien\") }}", ctx)).isTrue();
+        assertThat(resolver.evaluateCondition(
+                "{{ contains(poll.value, \"O'Connor\") }}", ctx)).isFalse();
+    }
+
+    @Test
+    void conditionLiteralWithEscapedDoubleQuote() {
+        TemplateResolver resolver = new TemplateResolver(name -> null);
+        java.util.Map<String, Object> ctx = java.util.Map.of(
+                "poll", java.util.Map.of("value", "they said \"hi\" loudly"));
+        assertThat(resolver.evaluateCondition(
+                "{{ contains(poll.value, \"said \\\"hi\\\"\") }}", ctx)).isTrue();
+        // escaped quote must not end the literal and hide the && that follows
+        assertThat(resolver.evaluateCondition(
+                "{{ contains(poll.value, \"\\\"hi\\\"\") && poll.value }}", ctx)).isTrue();
+    }
 }

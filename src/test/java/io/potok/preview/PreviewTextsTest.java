@@ -75,9 +75,18 @@ class PreviewTextsTest {
         assertThat(PreviewTexts.pollFetchSummary(200, true, "In stock!", css))
                 .isEqualTo("Fetched — status 200, element found: \"In stock!\"");
         assertThat(PreviewTexts.pollFetchSummary(200, true, null, css))
-                .contains("matched NOTHING").contains("span.availability");
+                .contains("matched NOTHING").contains("span.availability").contains("check the selector");
         assertThat(PreviewTexts.pollFetchSummary(200, false, null, null))
                 .isEqualTo("Fetched — status 200");
+    }
+
+    @Test
+    void pollFetchSummarySaysValueForJsonpath() {
+        var jsonpath = new WorkflowDefinition.Extract("$.rates[0].mid", null);
+        assertThat(PreviewTexts.pollFetchSummary(200, true, 4.42, jsonpath))
+                .isEqualTo("Fetched — status 200, value found: \"4.42\"");
+        assertThat(PreviewTexts.pollFetchSummary(200, true, null, jsonpath))
+                .contains("$.rates[0].mid").contains("check the path");
     }
 
     @Test

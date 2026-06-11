@@ -4,14 +4,38 @@
     "title": "Remind me on a schedule",
     "problem": "A message arrives in your Telegram at the time you choose. Water the plants, stretch, take the medicine — the simplest automation there is, and a good first one.",
     "trigger": "on a schedule",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "simple-reminder.yaml",
     "sample": "Don't forget: drink some water 💧",
     "default_name": "simple-reminder",
     "params": [
-      {"key": "cron", "label": "Schedule", "type": "cron", "required": true, "default": "0 9 * * *", "example": "0 9 * * *", "help": "5 fields: minute hour day month weekday — \"0 9 * * *\" means every day at 9:00 (server time)"},
-      {"key": "message", "label": "Message text", "type": "text", "required": true, "default": "Don't forget: drink some water 💧", "example": "Water the plants 🌱", "help": "Sent to Telegram exactly as written"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env — nothing to enter"}
+      {
+        "key": "cron",
+        "label": "Schedule",
+        "type": "cron",
+        "required": true,
+        "default": "0 9 * * *",
+        "example": "0 9 * * *",
+        "help": "5 fields: minute hour day month weekday — \"0 9 * * *\" means every day at 9:00 (server time)"
+      },
+      {
+        "key": "message",
+        "label": "Message text",
+        "type": "text",
+        "required": true,
+        "default": "Don't forget: drink some water 💧",
+        "example": "Water the plants 🌱",
+        "help": "Sent to Telegram exactly as written"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env — nothing to enter"
+      }
     ]
   },
   {
@@ -19,17 +43,70 @@
     "title": "Watch a number from any API",
     "problem": "Exchange rates, prices, temperatures, follower counts — if it's a number in a public API, Potok can watch it. You get exactly one message when the number crosses your line, and silence while nothing changes.",
     "trigger": "watches an API",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "json-threshold.yaml",
     "sample": "📈 The value is now 4.3120 (> 4.30) — https://api.nbp.pl/…",
     "default_name": "json-threshold",
     "params": [
-      {"key": "url", "label": "API address", "type": "url", "required": true, "default": "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json", "example": "https://api.example.com/stats", "help": "Any address that returns JSON"},
-      {"key": "jsonpath", "label": "Which number to watch", "type": "string", "required": true, "default": "$.rates[0].mid", "example": "$.price", "help": "Path to the number inside the response, e.g. $.price or $.stats.followers"},
-      {"key": "comparison", "label": "Alert when the value is", "type": "select", "options": ["<", ">", "==", "!="], "required": true, "default": ">", "help": "How to compare the value with your threshold"},
-      {"key": "threshold", "label": "Threshold", "type": "number", "required": true, "default": "4.30", "example": "100", "help": "The line that triggers the message"},
-      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "1h", "example": "10m", "help": "e.g. 30s, 10m, 1h"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "url",
+        "label": "API address",
+        "type": "url",
+        "required": true,
+        "default": "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json",
+        "example": "https://api.example.com/stats",
+        "help": "Any address that returns JSON"
+      },
+      {
+        "key": "jsonpath",
+        "label": "Which number to watch",
+        "type": "string",
+        "required": true,
+        "default": "$.rates[0].mid",
+        "example": "$.price",
+        "help": "Path to the number inside the response, e.g. $.price or $.stats.followers"
+      },
+      {
+        "key": "comparison",
+        "label": "Alert when the value is",
+        "type": "select",
+        "options": [
+          "<",
+          ">",
+          "==",
+          "!="
+        ],
+        "required": true,
+        "default": ">",
+        "help": "How to compare the value with your threshold"
+      },
+      {
+        "key": "threshold",
+        "label": "Threshold",
+        "type": "number",
+        "required": true,
+        "default": "4.30",
+        "example": "100",
+        "help": "The line that triggers the message"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "1h",
+        "example": "10m",
+        "help": "e.g. 30s, 10m, 1h"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -37,15 +114,47 @@
     "title": "Get told when a page mentions something",
     "problem": "Waiting for a name to appear in results, a city added to a tour, your street in a roadworks notice? Potok reads the page for you and sends one message the moment the words show up.",
     "trigger": "watches a page",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "keyword-on-page.yaml",
     "sample": "🔎 \"Warsaw\" just appeared on https://band.example.com/tour",
     "default_name": "keyword-on-page",
     "params": [
-      {"key": "url", "label": "Page address", "type": "url", "required": true, "default": "https://example.com/", "example": "https://band.example.com/tour", "help": "The page to read"},
-      {"key": "keyword", "label": "Word or phrase to wait for", "type": "string", "required": true, "default": "Example Domain", "example": "Warsaw", "help": "Case-sensitive; avoid quotes inside"},
-      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "30m", "example": "1h", "help": "e.g. 10m, 1h"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "url",
+        "label": "Page address",
+        "type": "url",
+        "required": true,
+        "default": "https://example.com/",
+        "example": "https://band.example.com/tour",
+        "help": "The page to read"
+      },
+      {
+        "key": "keyword",
+        "label": "Word or phrase to wait for",
+        "type": "string",
+        "required": true,
+        "default": "Example Domain",
+        "example": "Warsaw",
+        "help": "Case-sensitive; quotes and apostrophes are fine"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "30m",
+        "example": "1h",
+        "help": "e.g. 10m, 1h"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -53,16 +162,56 @@
     "title": "Know when a price drops",
     "problem": "Pick the price on any shop page and name your limit. Potok reads the price tag — \"249,99 zł\" is fine — and messages you once when it falls under your number.",
     "trigger": "watches a page",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "price-drop.yaml",
     "sample": "💸 Price dropped to 189.99 (under 200): https://shop.example.com/product/123",
     "default_name": "price-drop",
     "params": [
-      {"key": "url", "label": "Product page address", "type": "url", "required": true, "default": "https://shop.example.com/product/123", "example": "https://shop.pl/item/42", "help": "The page with the price on it"},
-      {"key": "selector", "label": "Where the price is", "type": "string", "required": true, "default": "span.price", "example": "span.price", "help": "CSS selector of the price element — right-click the price in your browser → Inspect"},
-      {"key": "threshold", "label": "Notify when it drops below", "type": "number", "required": true, "default": "200", "example": "150", "help": "Your target price"},
-      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "30m", "example": "1h", "help": "e.g. 10m, 1h"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "url",
+        "label": "Product page address",
+        "type": "url",
+        "required": true,
+        "default": "https://shop.example.com/product/123",
+        "example": "https://shop.pl/item/42",
+        "help": "The page with the price on it"
+      },
+      {
+        "key": "selector",
+        "label": "Where the price is",
+        "type": "string",
+        "required": true,
+        "default": "span.price",
+        "example": "span.price",
+        "help": "CSS selector of the price element — right-click the price in your browser → Inspect"
+      },
+      {
+        "key": "threshold",
+        "label": "Notify when it drops below",
+        "type": "number",
+        "required": true,
+        "default": "200",
+        "example": "150",
+        "help": "Your target price"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "30m",
+        "example": "1h",
+        "help": "e.g. 10m, 1h"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -70,15 +219,47 @@
     "title": "Never miss a recurring payment",
     "problem": "Rent, insurance, the subscription you keep forgetting about. One message on the same day every month, before the deadline instead of after it.",
     "trigger": "on a schedule",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "monthly-payment-reminder.yaml",
     "sample": "💳 Rent is due today — transfer before 18:00",
     "default_name": "monthly-payment-reminder",
     "params": [
-      {"key": "day", "label": "Day of the month", "type": "number", "required": true, "default": "25", "example": "1", "help": "1–28, so it works in February too"},
-      {"key": "hour", "label": "Hour", "type": "number", "required": true, "default": "9", "example": "9", "help": "0–23, server time"},
-      {"key": "message", "label": "Message text", "type": "text", "required": true, "default": "💳 Rent is due today — transfer before 18:00", "example": "Pay the insurance 🚗", "help": "Sent to Telegram exactly as written"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "day",
+        "label": "Day of the month",
+        "type": "number",
+        "required": true,
+        "default": "25",
+        "example": "1",
+        "help": "1–28, so it works in February too"
+      },
+      {
+        "key": "hour",
+        "label": "Hour",
+        "type": "number",
+        "required": true,
+        "default": "9",
+        "example": "9",
+        "help": "0–23, server time"
+      },
+      {
+        "key": "message",
+        "label": "Message text",
+        "type": "text",
+        "required": true,
+        "default": "💳 Rent is due today — transfer before 18:00",
+        "example": "Pay the insurance 🚗",
+        "help": "Sent to Telegram exactly as written"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -86,14 +267,39 @@
     "title": "Get told when your site is down",
     "problem": "Find out from a Telegram message, not from your users. Potok knocks on your site every few minutes and alerts you the moment it answers with an error.",
     "trigger": "on a schedule",
-    "actions": ["http", "telegram"],
+    "actions": [
+      "http",
+      "telegram"
+    ],
     "file": "healthcheck.yaml",
     "sample": "🚨 https://example.com is down — returned 503",
     "default_name": "uptime-monitor",
     "params": [
-      {"key": "url", "label": "Address to check", "type": "url", "required": true, "default": "https://httpbin.org/status/200", "example": "https://example.com/health", "help": "A page that should always answer OK"},
-      {"key": "cron", "label": "Schedule", "type": "cron", "required": true, "default": "*/5 * * * *", "example": "*/5 * * * *", "help": "\"*/5 * * * *\" means every 5 minutes"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "url",
+        "label": "Address to check",
+        "type": "url",
+        "required": true,
+        "default": "https://httpbin.org/status/200",
+        "example": "https://example.com/health",
+        "help": "A page that should always answer OK"
+      },
+      {
+        "key": "cron",
+        "label": "Schedule",
+        "type": "cron",
+        "required": true,
+        "default": "*/5 * * * *",
+        "example": "*/5 * * * *",
+        "help": "\"*/5 * * * *\" means every 5 minutes"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -101,14 +307,38 @@
     "title": "Know when a project ships a new release",
     "problem": "Following a tool or library you depend on? Every new release becomes one Telegram message with the version and a link — no GitHub account settings, no emails to dig through.",
     "trigger": "watches a feed",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "release-watcher.yaml",
     "sample": "🚀 New release in spring-projects/spring-boot: v3.5.14 — https://github.com/…",
     "default_name": "release-watcher",
     "params": [
-      {"key": "repo", "label": "GitHub project", "type": "string", "required": true, "default": "spring-projects/spring-boot", "example": "owner/repo", "help": "owner/name, exactly as in the project's address"},
-      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "30m", "example": "1h", "help": "e.g. 30m, 2h"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "repo",
+        "label": "GitHub project",
+        "type": "string",
+        "required": true,
+        "default": "spring-projects/spring-boot",
+        "example": "owner/repo",
+        "help": "owner/name, exactly as in the project's address"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "30m",
+        "example": "1h",
+        "help": "e.g. 30m, 2h"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -116,14 +346,38 @@
     "title": "Follow a feed in Telegram",
     "problem": "Any news feed, blog or podcast that publishes RSS lands in your chat — one message per new item, each item delivered exactly once.",
     "trigger": "watches a feed",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "rss-digest.yaml",
     "sample": "📰 Show HN: Potok — workflow engine without a broker\nhttps://news.ycombinator.com/item?id=…",
     "default_name": "rss-digest",
     "params": [
-      {"key": "feed_url", "label": "Feed address", "type": "url", "required": true, "default": "https://hnrss.org/frontpage", "example": "https://example.com/rss.xml", "help": "RSS or Atom — most news sites have one"},
-      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "15m", "example": "15m", "help": "e.g. 15m, 1h"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "feed_url",
+        "label": "Feed address",
+        "type": "url",
+        "required": true,
+        "default": "https://hnrss.org/frontpage",
+        "example": "https://example.com/rss.xml",
+        "help": "RSS or Atom — most news sites have one"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "15m",
+        "example": "15m",
+        "help": "e.g. 15m, 1h"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -131,15 +385,47 @@
     "title": "Know the moment a page changes",
     "problem": "Sold-out product, closed registration, \"no slots available\" — pick the one spot on the page that says so, and get pinged the moment it says something else. Ads and timestamps elsewhere on the page never trigger false alarms.",
     "trigger": "watches a page",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "availability-watcher.yaml",
     "sample": "👀 The page changed: In stock — https://shop.example.com/product/123",
     "default_name": "availability-watcher",
     "params": [
-      {"key": "url", "label": "Page address", "type": "url", "required": true, "default": "https://shop.example.com/product/123", "example": "https://shop.pl/coin/123", "help": "The page to watch"},
-      {"key": "selector", "label": "Which part of the page", "type": "string", "required": true, "default": "span.availability", "example": "span.price", "help": "CSS selector — right-click the element in your browser → Inspect"},
-      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "10m", "example": "30m", "help": "e.g. 30s, 10m, 1h"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "url",
+        "label": "Page address",
+        "type": "url",
+        "required": true,
+        "default": "https://shop.example.com/product/123",
+        "example": "https://shop.pl/coin/123",
+        "help": "The page to watch"
+      },
+      {
+        "key": "selector",
+        "label": "Which part of the page",
+        "type": "string",
+        "required": true,
+        "default": "span.availability",
+        "example": "span.price",
+        "help": "CSS selector — right-click the element in your browser → Inspect"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "10m",
+        "example": "30m",
+        "help": "e.g. 30s, 10m, 1h"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -147,16 +433,56 @@
     "title": "Buy euros when they're cheap",
     "problem": "The Polish central bank publishes the official exchange rate every day, for free. Set the rate you're waiting for and get one message when the euro dips under it.",
     "trigger": "watches an API",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "price-alert.yaml",
     "sample": "💶 EUR is at 4.1850 — below your 4.20 threshold, good time to exchange",
     "default_name": "price-alert",
     "params": [
-      {"key": "url", "label": "Rates address", "type": "url", "required": true, "default": "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json", "example": "https://api.nbp.pl/api/exchangerates/rates/a/usd/?format=json", "help": "NBP's free API — swap eur for usd, chf, gbp…"},
-      {"key": "jsonpath", "label": "Which number to watch", "type": "string", "required": true, "default": "$.rates[0].mid", "example": "$.rates[0].mid", "help": "Path to the rate inside the response — the default fits NBP"},
-      {"key": "threshold", "label": "Alert below", "type": "number", "required": true, "default": "4.20", "example": "4.00", "help": "One message when the rate drops under this"},
-      {"key": "interval", "label": "Check every", "type": "duration", "required": true, "default": "1h", "example": "1h", "help": "The bank updates once a day — hourly is plenty"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "url",
+        "label": "Rates address",
+        "type": "url",
+        "required": true,
+        "default": "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json",
+        "example": "https://api.nbp.pl/api/exchangerates/rates/a/usd/?format=json",
+        "help": "NBP's free API — swap eur for usd, chf, gbp…"
+      },
+      {
+        "key": "jsonpath",
+        "label": "Which number to watch",
+        "type": "string",
+        "required": true,
+        "default": "$.rates[0].mid",
+        "example": "$.rates[0].mid",
+        "help": "Path to the rate inside the response — the default fits NBP"
+      },
+      {
+        "key": "threshold",
+        "label": "Alert below",
+        "type": "number",
+        "required": true,
+        "default": "4.20",
+        "example": "4.00",
+        "help": "One message when the rate drops under this"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "1h",
+        "example": "1h",
+        "help": "The bank updates once a day — hourly is plenty"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -164,15 +490,48 @@
     "title": "Renew certificates before they expire",
     "problem": "An expired certificate takes your site down with a scary browser warning — and it always happens on a weekend. A daily check tells you two weeks ahead instead.",
     "trigger": "on a schedule",
-    "actions": ["ssl_check", "telegram"],
+    "actions": [
+      "ssl_check",
+      "telegram"
+    ],
     "file": "ssl-expiry.yaml",
     "sample": "🔒 Certificate for example.com expires in 13 days (2026-06-25T12:00:00Z)",
     "default_name": "ssl-expiry",
     "params": [
-      {"key": "host", "label": "Site to check", "type": "string", "required": true, "default": "example.com", "example": "mysite.pl", "help": "Just the domain, no https://"},
-      {"key": "days", "label": "Warn this many days ahead", "type": "number", "required": true, "default": "14", "example": "14", "help": "Quiet until fewer days remain than this"},
-      {"key": "cron", "label": "Schedule", "type": "cron", "required": true, "default": "0 9 * * *", "example": "0 9 * * *", "help": "Once a day is enough"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "host",
+        "label": "Site to check",
+        "type": "string",
+        "required": true,
+        "default": "example.com",
+        "example": "mysite.pl",
+        "help": "Just the domain, no https://"
+      },
+      {
+        "key": "days",
+        "label": "Warn this many days ahead",
+        "type": "number",
+        "required": true,
+        "default": "14",
+        "example": "14",
+        "help": "Quiet until fewer days remain than this"
+      },
+      {
+        "key": "cron",
+        "label": "Schedule",
+        "type": "cron",
+        "required": true,
+        "default": "0 9 * * *",
+        "example": "0 9 * * *",
+        "help": "Once a day is enough"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -180,14 +539,38 @@
     "title": "See repo pushes in Telegram",
     "problem": "Every push to your repository becomes a chat message: who pushed and what. Deliveries are cryptographically signed, so nobody can fake them.",
     "trigger": "incoming webhook",
-    "actions": ["telegram"],
+    "actions": [
+      "telegram"
+    ],
     "file": "github-notify.yaml",
     "sample": "⬆️ yura -> AntonovYuriy/Potok: fix: validate conditions at create time",
     "default_name": "github-notify",
     "params": [
-      {"key": "path", "label": "Webhook path", "type": "string", "required": true, "default": "gh", "example": "gh", "help": "GitHub will send updates to https://your-host/hooks/<path>"},
-      {"key": "secret_env", "label": "Secret env var NAME", "type": "string", "required": true, "default": "GITHUB_HOOK_SECRET", "example": "GITHUB_HOOK_SECRET", "help": "Name of the server env var holding the shared secret — set the same value in GitHub webhook settings; the secret itself is never typed here"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "path",
+        "label": "Webhook path",
+        "type": "string",
+        "required": true,
+        "default": "gh",
+        "example": "gh",
+        "help": "GitHub will send updates to https://your-host/hooks/<path>"
+      },
+      {
+        "key": "secret_env",
+        "label": "Secret env var NAME",
+        "type": "string",
+        "required": true,
+        "default": "GITHUB_HOOK_SECRET",
+        "example": "GITHUB_HOOK_SECRET",
+        "help": "Name of the server env var holding the shared secret — set the same value in GitHub webhook settings; the secret itself is never typed here"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   },
   {
@@ -195,15 +578,51 @@
     "title": "Remember to put the bins out",
     "problem": "Checks the official Warsaw waste schedule every morning and sends one line when something is collected today — silence otherwise. Also the example of a custom action: a city-specific API wrapped in ~100 lines of Java.",
     "trigger": "on a schedule",
-    "actions": ["warsaw_waste", "telegram"],
+    "actions": [
+      "warsaw_waste",
+      "telegram"
+    ],
     "file": "garbage-reminder.yaml",
     "sample": "🗑️ Сегодня вывоз: Bio",
     "default_name": "garbage-reminder",
     "params": [
-      {"key": "address_point_id", "label": "Address point id", "type": "string", "required": true, "default": "27086987", "example": "27086987", "help": "From the address autocomplete on warszawa19115.pl"},
-      {"key": "cron", "label": "Schedule", "type": "cron", "required": true, "default": "0 7 * * *", "example": "0 7 * * *", "help": "Morning check, server time (compose sets TZ=Europe/Warsaw)"},
-      {"key": "when", "label": "Day to check", "type": "string", "required": true, "default": "today", "example": "today", "help": "today or tomorrow"},
-      {"key": "chat", "label": "Telegram chat", "type": "env", "env": "TELEGRAM_CHAT_ID", "help": "uses ${TELEGRAM_CHAT_ID} from server env"}
+      {
+        "key": "address_point_id",
+        "label": "Address point id",
+        "type": "string",
+        "required": true,
+        "default": "27086987",
+        "example": "27086987",
+        "help": "From the address autocomplete on warszawa19115.pl"
+      },
+      {
+        "key": "cron",
+        "label": "Schedule",
+        "type": "cron",
+        "required": true,
+        "default": "0 7 * * *",
+        "example": "0 7 * * *",
+        "help": "Morning check, server time (compose sets TZ=Europe/Warsaw)"
+      },
+      {
+        "key": "when",
+        "label": "Day to check",
+        "type": "select",
+        "options": [
+          "today",
+          "tomorrow"
+        ],
+        "required": true,
+        "default": "today",
+        "help": "today = morning reminder, tomorrow = evening heads-up"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
     ]
   }
 ]

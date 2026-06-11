@@ -8,9 +8,19 @@ import { runPreview } from './preview.js';
 const view = () => document.getElementById('view');
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// {{param.key}} substitution — the param namespace only; runtime {{ steps.* }} untouched
+// {{param.key}} substitution — the param namespace only; runtime {{ steps.* }} untouched.
+// Filters keep quotes in user text from breaking quoted contexts (twin of the
+// Java TemplateRenderer): |cond = double-quoted condition literal inside a
+// single-quoted YAML scalar; |dq = double-quoted YAML scalar.
+function escapeParam(value, filter) {
+    if (!filter) return value;
+    const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return filter === 'cond' ? escaped.replace(/'/g, "''") : escaped;
+}
+
 function renderTemplate(tpl, values) {
-    return tpl.replace(/\{\{param\.([A-Za-z0-9_]+)}}/g, (_, key) => values[key] ?? '');
+    return tpl.replace(/\{\{param\.([A-Za-z0-9_]+)(?:\|(cond|dq))?}}/g,
+        (_, key, filter) => escapeParam(values[key] ?? '', filter));
 }
 
 const VALIDATORS = {

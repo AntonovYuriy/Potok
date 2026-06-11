@@ -33,21 +33,26 @@ curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
 
 ## Use cases
 
-Eight ready-to-use automations. Pick one in the dashboard (Help → Examples),
-fill a short form — URL, selector, schedule — and the workflow YAML is
-generated for you. Full walkthroughs with sample messages:
-[docs/use-cases.md](docs/use-cases.md).
+Thirteen ready-to-use automations. Pick one in the dashboard (Help →
+Examples), fill a short form — URL, threshold, schedule — hit Preview ▶ to
+see what would happen right now, then Create. Full walkthroughs with sample
+messages: [docs/use-cases.md](docs/use-cases.md).
 
 | Case | Trigger | File |
 |---|---|---|
-| Scheduled reminder (hello-world) | cron | [simple-reminder.yaml](examples/simple-reminder.yaml) |
-| Waste collection reminder (Warsaw, runs in production) | cron + `warsaw_waste` | [garbage-reminder.yaml](examples/garbage-reminder.yaml) |
-| Availability / price-tag watcher | poll + css extract | [availability-watcher.yaml](examples/availability-watcher.yaml) |
-| Exchange-rate alert (NBP) | poll + jsonpath, edge-triggered | [price-alert.yaml](examples/price-alert.yaml) |
-| Website uptime monitor | cron + http | [healthcheck.yaml](examples/healthcheck.yaml) |
-| Morning RSS digest | rss, per-item dedupe | [rss-digest.yaml](examples/rss-digest.yaml) |
-| GitHub push notification | signed webhook (HMAC) | [github-notify.yaml](examples/github-notify.yaml) |
-| SSL certificate expiry check | cron + `ssl_check` | [ssl-expiry.yaml](examples/ssl-expiry.yaml) |
+| Remind me on a schedule (hello-world) | cron | [simple-reminder.yaml](examples/simple-reminder.yaml) |
+| Watch a number from any API | poll + jsonpath, edge-triggered | [json-threshold.yaml](examples/json-threshold.yaml) |
+| Get told when a page mentions something | poll + `contains()` | [keyword-on-page.yaml](examples/keyword-on-page.yaml) |
+| Know when a price drops ("249,99 zł" parsed) | poll + css + `number: true` | [price-drop.yaml](examples/price-drop.yaml) |
+| Never miss a recurring payment | monthly cron | [monthly-payment-reminder.yaml](examples/monthly-payment-reminder.yaml) |
+| Get told when your site is down | cron + http | [healthcheck.yaml](examples/healthcheck.yaml) |
+| Know when a project ships a new release | rss (GitHub releases.atom) | [release-watcher.yaml](examples/release-watcher.yaml) |
+| Follow a feed in Telegram | rss, per-item dedupe | [rss-digest.yaml](examples/rss-digest.yaml) |
+| Know the moment a page changes | poll + css extract | [availability-watcher.yaml](examples/availability-watcher.yaml) |
+| Buy euros when they're cheap (NBP) | poll + jsonpath, edge-triggered | [price-alert.yaml](examples/price-alert.yaml) |
+| Renew certificates before they expire | cron + `ssl_check` | [ssl-expiry.yaml](examples/ssl-expiry.yaml) |
+| See repo pushes in Telegram | signed webhook (HMAC) | [github-notify.yaml](examples/github-notify.yaml) |
+| Remember to put the bins out (Warsaw, runs in production; custom-action example) | cron + `warsaw_waste` | [garbage-reminder.yaml](examples/garbage-reminder.yaml) |
 
 ## Architecture
 

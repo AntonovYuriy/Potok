@@ -7,4 +7,4 @@ steps:
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "Не забудь: выпить воды 💧"
+      text: "Don't forget: drink some water 💧"

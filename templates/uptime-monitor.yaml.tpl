@@ -17,4 +17,4 @@ steps:
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "ALERT: {{param.url}} returned {{ steps.probe.status }}"
+      text: "🚨 {{param.url}} is down — returned {{ steps.probe.status }}"

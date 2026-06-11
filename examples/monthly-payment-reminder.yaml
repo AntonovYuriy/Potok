@@ -1,0 +1,11 @@
+# One Telegram message on a fixed day every month — rent, insurance,
+# subscriptions. Days 1-28 work in every month.
+name: monthly-payment-reminder
+trigger:
+  cron: "0 9 25 * *"
+steps:
+  - name: remind
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "💳 Rent is due today — transfer before 18:00"

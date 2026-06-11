@@ -1,0 +1,19 @@
+# The universal workhorse: watch ONE number in any JSON API and get a message
+# when it crosses your line. Edge-triggered — one alert when the condition
+# becomes true, silence while it stays true.
+name: json-threshold
+trigger:
+  poll:
+    interval: 1h
+    http:
+      method: GET
+      url: "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json"
+    extract:
+      jsonpath: "$.rates[0].mid"
+    fire_when: "{{ poll.value > 4.30 }}"
+steps:
+  - name: notify
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "📈 The value is now {{ trigger.value }} (> 4.30) — https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json"

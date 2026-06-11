@@ -16,4 +16,4 @@ steps:
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "💶 Курс {{ trigger.value }} — ниже порога 4.20, пора менять"
+      text: "💶 EUR is at {{ trigger.value }} — below your 4.20 threshold, good time to exchange"

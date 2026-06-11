@@ -1,0 +1,20 @@
+# Watches a price on a shop page (css selector) and alerts when it drops
+# below your limit. "number: true" turns price tags like "249,99 zł" into
+# numbers, so the comparison just works. Edge-triggered: one message per drop.
+name: price-drop
+trigger:
+  poll:
+    interval: 30m
+    http:
+      method: GET
+      url: "https://shop.example.com/product/123"
+    extract:
+      css: "span.price"
+      number: true
+    fire_when: "{{ poll.value < 200 }}"
+steps:
+  - name: notify
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "💸 Price dropped to {{ trigger.value }} (under 200): https://shop.example.com/product/123"

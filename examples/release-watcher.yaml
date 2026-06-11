@@ -1,0 +1,13 @@
+# GitHub publishes an Atom feed for every repo's releases — no API key
+# needed. Each new release becomes one Telegram message.
+name: release-watcher
+trigger:
+  rss:
+    interval: 30m
+    url: "https://github.com/spring-projects/spring-boot/releases.atom"
+steps:
+  - name: notify
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "🚀 New release in spring-projects/spring-boot: {{ trigger.title }} — {{ trigger.link }}"

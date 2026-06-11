@@ -245,6 +245,63 @@ class PreviewIntegrationTest extends IntegrationTestBase {
         assertThat((String) response.getBody().get("detail")).contains("fetch");
     }
 
+    /** Renders a catalog template with given param values — the form's exact code path. */
+    private String renderTemplate(String id, Map<String, String> values) throws Exception {
+        String tpl = java.nio.file.Files.readString(java.nio.file.Path.of("templates", id + ".yaml.tpl"));
+        return io.potok.template.TemplateRenderer.render(tpl, values);
+    }
+
+    @Test
+    void jsonThresholdTemplatePreviewsAgainstLiveData() throws Exception {
+        WIRE_MOCK.stubFor(get("/rates").willReturn(okJson("{\"rates\":[{\"mid\": 4.42}]}")));
+
+        Map<String, Object> result = preview(renderTemplate("json-threshold", Map.of(
+                "name", "pv-json-threshold", "url", WIRE_MOCK.baseUrl() + "/rates",
+                "jsonpath", "$.rates[0].mid", "comparison", ">",
+                "threshold", "4.30", "interval", "1h")));
+
+        Map<String, Object> trigger = trigger(result);
+        assertThat((String) trigger.get("human_summary"))
+                .contains("4.42").contains("Fire condition is TRUE right now");
+        Map<String, Object> notify = steps(result).get(0);
+        assertThat(notify.get("mode")).isEqualTo("simulated");
+        assertThat((String) notify.get("human_summary")).contains("The value is now 4.42");
+        WIRE_MOCK.verify(0, postRequestedFor(urlPathMatching("/bot.*/sendMessage")));
+    }
+
+    @Test
+    void keywordOnPageTemplatePreviewsBothStates() throws Exception {
+        String yaml = renderTemplate("keyword-on-page", Map.of(
+                "name", "pv-keyword", "url", WIRE_MOCK.baseUrl() + "/tour",
+                "keyword", "Warsaw", "interval", "30m"));
+
+        WIRE_MOCK.stubFor(get("/tour").willReturn(ok("<html><body>Berlin, Prague</body></html>")));
+        assertThat((String) trigger(preview(yaml)).get("human_summary"))
+                .contains("Fire condition is NOT met right now");
+
+        WIRE_MOCK.stubFor(get("/tour").willReturn(ok("<html><body>Berlin, Warsaw, Prague</body></html>")));
+        assertThat((String) trigger(preview(yaml)).get("human_summary"))
+                .contains("Fire condition is TRUE right now");
+    }
+
+    @Test
+    void priceDropTemplateParsesThePriceTagNumerically() throws Exception {
+        WIRE_MOCK.stubFor(get("/product").willReturn(
+                ok("<html><body><span class=\"price\">189,99 zł</span></body></html>")));
+
+        Map<String, Object> result = preview(renderTemplate("price-drop", Map.of(
+                "name", "pv-price-drop", "url", WIRE_MOCK.baseUrl() + "/product",
+                "selector", "span.price", "threshold", "200", "interval", "30m")));
+
+        Map<String, Object> trigger = trigger(result);
+        // "249,99 zł"-style tag parsed to a number and compared against the threshold
+        assertThat((String) trigger.get("human_summary"))
+                .contains("element found: \"189.99\"")
+                .contains("Fire condition is TRUE right now");
+        assertThat((String) steps(result).get(0).get("human_summary"))
+                .contains("Price dropped to 189.99");
+    }
+
     @Test
     void rejectsMoreThanTenSteps() {
         StringBuilder yaml = new StringBuilder("""

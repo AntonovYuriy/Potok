@@ -17,4 +17,4 @@ steps:
     if: "{{ steps.check.days_left < 14 }}"
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "🔒 Сертификат {{ steps.check.host }} истекает через {{ steps.check.days_left }} дн. ({{ steps.check.not_after }})"
+      text: "🔒 Certificate for {{ steps.check.host }} expires in {{ steps.check.days_left }} days ({{ steps.check.not_after }})"

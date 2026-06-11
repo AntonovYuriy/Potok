@@ -27,7 +27,7 @@
   "actions": [
     { "name": "http", "params": "method, url, headers, body, fail_on_status", "output": "{status, headers, body} — body parsed as JSON when possible; fail_on_status: false records non-2xx as success" },
     { "name": "telegram", "params": "chat_id, text", "output": "{status, chat_id}; requires TELEGRAM_BOT_TOKEN env" },
-    { "name": "warsaw_waste", "params": "address_point_id, base_url", "output": "{tomorrow_date, tomorrow[], tomorrow_count, summary, upcoming[]} — Warsaw waste schedule" },
+    { "name": "warsaw_waste", "params": "address_point_id, when (today|tomorrow), base_url", "output": "{date, when, has_collection, collected[], summary, upcoming[]} — Warsaw waste schedule, summary is one ready-to-send line" },
     { "name": "ssl_check", "params": "host, port (443)", "output": "{host, port, days_left, not_after, subject, issuer} — reads the served TLS certificate, even expired ones" }
   ]
 }

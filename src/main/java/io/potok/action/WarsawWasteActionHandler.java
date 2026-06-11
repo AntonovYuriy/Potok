@@ -22,13 +22,15 @@ import java.util.Map;
 
 /**
  * Fetches the Warsaw waste collection schedule (warszawa19115.pl) and reports
- * what is collected TOMORROW (Europe/Warsaw). Doubles as the reference
- * implementation of a real-world custom action on the ActionHandler SPI.
+ * what is collected on the requested day (Europe/Warsaw). Doubles as the
+ * reference implementation of a real-world custom action on the SPI.
  *
  * with: address_point_id (required — get yours from the address autocomplete
- * on warszawa19115.pl), base_url (optional, for tests).
+ * on warszawa19115.pl), when: "today"|"tomorrow" (default today),
+ * base_url (optional, for tests).
  *
- * Output: {tomorrow_date, tomorrow: [labels], tomorrow_count, summary,
+ * Output: {date, when, has_collection, collected: [labels],
+ * summary — one human-ready Russian line ("Сегодня вывоз: Papier, Bio"),
  * upcoming: [{date, code, fraction}...]} — the endpoint only ever returns the
  * NEXT date per fraction, so "upcoming" is one entry per fraction.
  */
@@ -82,6 +84,10 @@ public class WarsawWasteActionHandler implements ActionHandler {
         } catch (IllegalArgumentException e) {
             return StepResult.fail(e.getMessage());
         }
+        String when = ctx.optionalString("when", "today");
+        if (!when.equals("today") && !when.equals("tomorrow")) {
+            return StepResult.fail("'when' must be \"today\" or \"tomorrow\", got '" + when + "'");
+        }
         String baseUrl = ctx.optionalString("base_url", DEFAULT_BASE_URL);
 
         String url = baseUrl + "/harmonogramy-wywozu-odpadow"
@@ -122,14 +128,14 @@ public class WarsawWasteActionHandler implements ActionHandler {
                     + body.substring(0, Math.min(150, body.length())));
         }
 
-        return StepResult.ok(buildOutput(root, LocalDate.now(clock)));
+        return StepResult.ok(buildOutput(root, LocalDate.now(clock), when));
     }
 
-    /** Pure transform, unit-testable: API JSON -> step output for the given "today". */
-    Map<String, Object> buildOutput(JsonNode root, LocalDate today) {
-        LocalDate tomorrow = today.plusDays(1);
+    /** Pure transform, unit-testable: API JSON -> step output for the given "today" and when-mode. */
+    Map<String, Object> buildOutput(JsonNode root, LocalDate today, String when) {
+        LocalDate target = when.equals("tomorrow") ? today.plusDays(1) : today;
         List<Map<String, Object>> upcoming = new ArrayList<>();
-        List<String> tomorrowLabels = new ArrayList<>();
+        List<String> collected = new ArrayList<>();
 
         Iterable<JsonNode> blocks = root.isArray() ? root : List.of(root);
         for (JsonNode block : blocks) {
@@ -143,18 +149,22 @@ public class WarsawWasteActionHandler implements ActionHandler {
                 String label = FRACTION_LABELS.getOrDefault(code,
                         item.path("frakcja").path("nazwa").asText(code));
                 upcoming.add(Map.of("date", date, "code", code, "fraction", label));
-                if (date.equals(tomorrow.toString())) {
-                    tomorrowLabels.add(label);
+                if (date.equals(target.toString())) {
+                    collected.add(label);
                 }
             }
         }
         upcoming.sort((a, b) -> ((String) a.get("date")).compareTo((String) b.get("date")));
+        boolean hasCollection = !collected.isEmpty();
 
         Map<String, Object> output = new LinkedHashMap<>();
-        output.put("tomorrow_date", tomorrow.toString());
-        output.put("tomorrow", tomorrowLabels);
-        output.put("tomorrow_count", tomorrowLabels.size());
-        output.put("summary", String.join(", ", tomorrowLabels));
+        output.put("date", target.toString());
+        output.put("when", when);
+        output.put("has_collection", hasCollection);
+        output.put("collected", collected);
+        output.put("summary", hasCollection
+                ? (when.equals("tomorrow") ? "Завтра вывоз: " : "Сегодня вывоз: ") + String.join(", ", collected)
+                : "");
         output.put("upcoming", upcoming);
         return output;
     }

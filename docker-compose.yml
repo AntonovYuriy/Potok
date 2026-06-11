@@ -10,6 +10,8 @@ services:
       # Optional: telegram action fails its step with a clear error when unset
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # Cron schedules fire in this timezone
+      TZ: ${TZ:-Europe/Warsaw}
       # Tuning knobs (see README "Configuration")
       POTOK_API_KEY: ${POTOK_API_KEY:-}
       POTOK_RETENTION_DAYS: ${POTOK_RETENTION_DAYS:-30}

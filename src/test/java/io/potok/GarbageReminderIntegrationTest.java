@@ -58,12 +58,13 @@ class GarbageReminderIntegrationTest extends IntegrationTestBase {
                     with:
                       address_point_id: "27086987"
                       base_url: "%s"
+                      when: today
                   - name: notify
-                    if: "{{ steps.schedule.tomorrow_count != 0 }}"
+                    if: "{{ steps.schedule.has_collection == true }}"
                     action: telegram
                     with:
                       chat_id: "42"
-                      text: "🗑️ Завтра вывоз ({{ steps.schedule.tomorrow_date }}): {{ steps.schedule.summary }}"
+                      text: "🗑️ {{ steps.schedule.summary }}"
                 """.formatted(name, path, WIRE_MOCK.baseUrl()));
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return (String) postJson("/hooks/" + path, Map.of()).getBody().get("executionId");
@@ -71,11 +72,11 @@ class GarbageReminderIntegrationTest extends IntegrationTestBase {
 
     @Test
     @SuppressWarnings("unchecked")
-    void sendsSummaryWhenCollectionIsTomorrow() {
-        String tomorrow = LocalDate.now(ZoneId.of("Europe/Warsaw")).plusDays(1).toString();
-        stubApiAndTelegram(tomorrow);
+    void sendsMergedSummaryWhenCollectionIsToday() {
+        String today = LocalDate.now(ZoneId.of("Europe/Warsaw")).toString();
+        stubApiAndTelegram(today);
 
-        String executionId = createAndRun("garbage-tomorrow", "garbage-tomorrow");
+        String executionId = createAndRun("garbage-today", "garbage-today");
 
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
                 assertThat(getExecution(executionId).get("status")).isEqualTo("SUCCEEDED"));
@@ -84,17 +85,18 @@ class GarbageReminderIntegrationTest extends IntegrationTestBase {
                 (List<Map<String, Object>>) getExecution(executionId).get("steps");
         Map<String, Object> schedule = steps.get(0);
         Map<String, Object> output = (Map<String, Object>) schedule.get("output");
-        assertThat(output.get("tomorrow_count")).isEqualTo(2);
-        assertThat(output.get("summary")).isEqualTo("Papier, Zmieszane");
+        assertThat(output.get("has_collection")).isEqualTo(true);
+        // two same-day fractions merged into ONE human-ready line
+        assertThat(output.get("summary")).isEqualTo("Сегодня вывоз: Papier, Zmieszane");
         assertThat(steps.get(1).get("status")).isEqualTo("SUCCEEDED");
 
         WIRE_MOCK.verify(1, postRequestedFor(urlEqualTo("/bottest-token/sendMessage"))
-                .withRequestBody(containing("Завтра вывоз (" + tomorrow + "): Papier, Zmieszane")));
+                .withRequestBody(containing("Сегодня вывоз: Papier, Zmieszane")));
     }
 
     @Test
     @SuppressWarnings("unchecked")
-    void skipsNotifyWhenNothingTomorrow() {
+    void skipsNotifyWhenNothingToday() {
         String farFuture = LocalDate.now(ZoneId.of("Europe/Warsaw")).plusDays(7).toString();
         stubApiAndTelegram(farFuture);
 
@@ -105,6 +107,9 @@ class GarbageReminderIntegrationTest extends IntegrationTestBase {
 
         List<Map<String, Object>> steps =
                 (List<Map<String, Object>>) getExecution(executionId).get("steps");
+        Map<String, Object> output = (Map<String, Object>) steps.get(0).get("output");
+        assertThat(output.get("has_collection")).isEqualTo(false);
+        assertThat(output.get("summary")).isEqualTo("");
         assertThat(steps.get(1).get("status")).isEqualTo("SKIPPED");
         WIRE_MOCK.verify(0, postRequestedFor(urlEqualTo("/bottest-token/sendMessage")));
     }

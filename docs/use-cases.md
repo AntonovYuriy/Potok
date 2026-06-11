@@ -11,29 +11,32 @@ Placeholders like `${TELEGRAM_CHAT_ID}` are environment variables on the server.
 
 You sort your waste, but the schedule is a PDF on a city website and every
 fraction has its own day. This workflow asks the official warszawa19115.pl
-API every evening and messages you only when something is collected tomorrow —
-silence on the other days. This is the original use case Potok was built for,
-and it runs in production.
+API every morning and messages you only when something is collected today —
+silence on the other days. All fractions for the day arrive merged into one
+line. This is the original use case Potok was built for, and it runs in
+production. (`when: tomorrow` gives an evening heads-up instead; crons fire
+in the server timezone — compose sets `TZ=Europe/Warsaw`.)
 
 ```yaml
 name: garbage-reminder
 trigger:
-  cron: "0 19 * * *"
+  cron: "0 7 * * *"
 steps:
   - name: schedule
     action: warsaw_waste
     with:
       address_point_id: "27086987"   # from the address autocomplete on warszawa19115.pl
+      when: today                    # or "tomorrow" for an evening reminder
 
   - name: notify
-    if: "{{ steps.schedule.tomorrow_count != 0 }}"
+    if: "{{ steps.schedule.has_collection == true }}"
     action: telegram
     with:
       chat_id: "${TELEGRAM_CHAT_ID}"
-      text: "🗑️ Завтра вывоз ({{ steps.schedule.tomorrow_date }}): {{ steps.schedule.summary }}"
+      text: "🗑️ {{ steps.schedule.summary }}"
 ```
 
-> 🗑️ Завтра вывоз (2026-06-16): Bio
+> 🗑️ Сегодня вывоз: Papier, Bio
 
 ## 2. Availability / price-tag watcher
 

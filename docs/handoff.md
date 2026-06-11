@@ -1,8 +1,15 @@
 # Handoff
 
-_Last updated: 2026-06-11 (M5.2 done)._
+_Last updated: 2026-06-11 (M5.3 done)._
 
 ## Current state
+
+- **M5.3 done — 13-card human-first catalog** (2026-06-11, PR #12, squash `cfea4a5`, 178 tests):
+  - 5 new templates: json-threshold (universal "watch a number from any API", 2nd in gallery, select param for comparison), keyword-on-page (contains() over body text, edge-triggered), monthly-payment-reminder (renders `0 H D * *`), release-watcher (rss on github releases.atom), price-drop (css + `number: true` + numeric fire_when).
+  - Engine affordance: `extract.number: true` — PollExtractor.parseNumber coerces "249,99 zł"/"$1,299.00"/"1 234,50 PLN" → BigDecimal (comma/dot locale logic, first number in text, no digits → null). Parser validates the flag; unit-tested matrix.
+  - All 13 cards rewritten human-first: goal-titles, jargon-free problems, plain trigger chips ("on a schedule"/"watches a page"/…), "What you'll need:" line in card detail auto-built from required params; gallery ordered by simplicity, garbage-reminder last (custom-action example); template messages now English (action output unchanged). Forms: new `select` param type (dropdown, validated client-side + manifest schema test asserts options + default∈options). Gallery order pinned by test.
+  - docs/use-cases.md rewritten (13 walkthroughs), README table 13 rows, demo.gif re-recorded (gallery layout changed; frames now end on the inline preview panel).
+  - Live-verified e2e: json-threshold form → select dropdown → Preview honestly "NOT met (4.2)" → Create → baseline quiet → flip local API 4.20→4.42 → exactly 1 execution, REAL telegram "📈 The value is now 4.42 (> 4.30)".
 
 - **M5.2 done — live preview + SSRF guard** (2026-06-11, PR #11, squash `0a29bfb`, 173 tests):
   - `POST /api/preview` (yaml body, normal tokens): validates like create, runs the DAG ONCE synchronously in-process — nothing persisted (no workflow/execution rows, no poll state). Read-only actions execute for real (http GET, poll fetch → live `trigger.*` for step templates, ssl_check, warsaw_waste; rss uses the latest feed item); side effects simulated (telegram text rendered NOT sent, non-GET http → "would send POST to …"); custom/unknown actions never executed. Engine-true semantics: condition-skip satisfies dependents, downstream of failed step → "would be skipped". Limits: 10s wall clock (`POTOK_PREVIEW_TIMEOUT`), 10 steps, 1 attempt, capped strings; failures are result entries, not 5xx.
@@ -81,7 +88,8 @@ _Last updated: 2026-06-11 (M5.2 done)._
 - UI editor is a plain textarea — no YAML syntax highlighting (deliberate: no build step).
 - cron_fire claims assume minute granularity — a 6-field cron with seconds would dedupe to 1 fire/min across replicas (single instance unaffected).
 - `renderTemplate` exists twice (Java `TemplateRenderer` + JS twin in help.js) — kept in sync by the drift test only at the Java end; JS regex must match `PARAM` pattern if it ever changes.
-- Template forms have no select/enum param type (e.g. `when: today|tomorrow` is a free string field).
+- Template forms: select type exists since M5.3 (used for comparison operators), but garbage-reminder `when: today|tomorrow` is still a free string field — could become select.
+- keyword-on-page: keyword is interpolated into single quotes inside `contains()` — an apostrophe in the keyword breaks the condition (help text says to avoid quotes).
 - Preview executes the poll fetch but evaluates `fire_when` informationally only — it cannot show "would fire" for changed-mode (needs two observations by definition).
 - UrlGuard checks the initial URL only: redirect chains are followed unguarded, DNS rebinding not addressed (documented in README).
 

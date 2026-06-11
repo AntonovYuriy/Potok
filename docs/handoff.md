@@ -1,8 +1,14 @@
 # Handoff
 
-_Last updated: 2026-06-11 (M5.1 done)._
+_Last updated: 2026-06-11 (M5.2 done)._
 
 ## Current state
+
+- **M5.2 done — live preview + SSRF guard** (2026-06-11, PR #11, squash `0a29bfb`, 173 tests):
+  - `POST /api/preview` (yaml body, normal tokens): validates like create, runs the DAG ONCE synchronously in-process — nothing persisted (no workflow/execution rows, no poll state). Read-only actions execute for real (http GET, poll fetch → live `trigger.*` for step templates, ssl_check, warsaw_waste; rss uses the latest feed item); side effects simulated (telegram text rendered NOT sent, non-GET http → "would send POST to …"); custom/unknown actions never executed. Engine-true semantics: condition-skip satisfies dependents, downstream of failed step → "would be skipped". Limits: 10s wall clock (`POTOK_PREVIEW_TIMEOUT`), 10 steps, 1 attempt, capped strings; failures are result entries, not 5xx.
+  - UI: "Preview ▶" on the template form AND the YAML editor; inline panel — friendly card per step (`✓/✉/○/✗/→`), trigger card with plain-language fire-semantics line, technical detail collapsed. Shared module static/js/preview.js.
+  - `UrlGuard` (io.potok.common): blocks loopback/RFC1918/link-local (incl. 169.254.169.254)/IPv6 unique-local in http + pollers + ssl_check + warsaw_waste. `POTOK_ALLOW_PRIVATE_URLS=true` disables (README Security documents trade-off + limitations: initial URL only, no redirect re-check, no DNS-rebinding defense). Tests run with allow=true via src/test/resources/application.properties (WireMock on localhost); guard covered by UrlGuardTest + PreviewSsrfIntegrationTest (overrides to false).
+  - Live-verified: real-browser clickthrough (Playwright via npx, browsers in ~/Library/Caches/ms-playwright) — form preview of availability-watcher vs local page ("element found: In stock!", message rendered not sent); editor preview of garbage-reminder vs REAL Warsaw API ("No collection today", condition honestly false, no telegram sent); SSRF default blocks metadata endpoint with friendly text.
 
 - **M5.1 done — parameterized templates, form-based import** (2026-06-11, PR #10, squash `e9b06d4`, 147 tests):
   - `templates/*.yaml.tpl` (8, incl. new `simple-reminder` — cron+message, first in the gallery) with `{{param.key}}` placeholders are the single source of truth. `examples/` is generated: `./gradlew renderExamples` renders each template with its `templates.json` defaults. Drift impossible — `TemplatesIntegrationTest` re-renders every template, asserts byte-equality with the committed example, then creates it via the API (2xx).
@@ -76,6 +82,8 @@ _Last updated: 2026-06-11 (M5.1 done)._
 - cron_fire claims assume minute granularity — a 6-field cron with seconds would dedupe to 1 fire/min across replicas (single instance unaffected).
 - `renderTemplate` exists twice (Java `TemplateRenderer` + JS twin in help.js) — kept in sync by the drift test only at the Java end; JS regex must match `PARAM` pattern if it ever changes.
 - Template forms have no select/enum param type (e.g. `when: today|tomorrow` is a free string field).
+- Preview executes the poll fetch but evaluates `fire_when` informationally only — it cannot show "would fire" for changed-mode (needs two observations by definition).
+- UrlGuard checks the initial URL only: redirect chains are followed unguarded, DNS rebinding not addressed (documented in README).
 
 ## Verified 2026-06-10 (M1)
 

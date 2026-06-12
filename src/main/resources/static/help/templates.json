@@ -39,6 +39,63 @@
     ]
   },
   {
+    "id": "follow-up-reminder",
+    "title": "Remind me — and don't let it go",
+    "problem": "One reminder is easy to dismiss. This one comes back: a message now, a quiet pause of a few days, then a follow-up. The pause survives server restarts — it's stored, not running in memory.",
+    "trigger": "on a schedule",
+    "actions": [
+      "telegram"
+    ],
+    "file": "follow-up-reminder.yaml",
+    "sample": "💳 Pay the insurance → (3 days later) → ⏰ Still pending? Insurance!",
+    "default_name": "follow-up-reminder",
+    "params": [
+      {
+        "key": "cron",
+        "label": "Schedule",
+        "type": "cron",
+        "required": true,
+        "default": "0 9 * * *",
+        "example": "0 9 1 * *",
+        "help": "When the first message goes out (server time)"
+      },
+      {
+        "key": "message",
+        "label": "First message",
+        "type": "text",
+        "required": true,
+        "default": "💳 Pay the insurance",
+        "example": "Submit the report",
+        "help": "Sent immediately when the schedule fires"
+      },
+      {
+        "key": "days",
+        "label": "Follow up after (days)",
+        "type": "number",
+        "required": true,
+        "default": "3",
+        "example": "2",
+        "help": "The workflow sleeps this many days — durable, survives restarts"
+      },
+      {
+        "key": "followup",
+        "label": "Follow-up message",
+        "type": "text",
+        "required": true,
+        "default": "⏰ Still pending? Insurance!",
+        "example": "Reminder: the report!",
+        "help": "Sent after the pause"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
+    ]
+  },
+  {
     "id": "json-threshold",
     "title": "Watch a number from any API",
     "problem": "Exchange rates, prices, temperatures, follower counts — if it's a number in a public API, Potok can watch it. You get exactly one message when the number crosses your line, and silence while nothing changes.",
@@ -99,6 +156,69 @@
         "default": "1h",
         "example": "10m",
         "help": "e.g. 30s, 10m, 1h"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
+    ]
+  },
+  {
+    "id": "confirm-before-act",
+    "title": "Ask me before doing it",
+    "problem": "A service wants to act — deploy, publish, order — but you want the final word. The request becomes a Telegram question with approve/deny links; only your \"yes\" triggers the action, and silence counts as \"no\".",
+    "trigger": "incoming webhook",
+    "actions": [
+      "approval",
+      "http",
+      "telegram"
+    ],
+    "file": "confirm-before-act.yaml",
+    "sample": "Deploy v2.3 to prod?\n✅ Approve: https://…  ❌ Deny: https://…  ⏳ Expires in 6h",
+    "default_name": "confirm-before-act",
+    "params": [
+      {
+        "key": "path",
+        "label": "Webhook path",
+        "type": "string",
+        "required": true,
+        "default": "confirm",
+        "example": "deploy",
+        "help": "The service calls https://your-host/hooks/<path> to start the question"
+      },
+      {
+        "key": "question",
+        "label": "Question to ask",
+        "type": "text",
+        "required": true,
+        "default": "Run the action?",
+        "example": "Deploy v2.3 to prod?",
+        "help": "Arrives in Telegram with one-time approve/deny links"
+      },
+      {
+        "key": "action_url",
+        "label": "What to call on \"yes\"",
+        "type": "url",
+        "required": true,
+        "default": "https://example.com/hook",
+        "example": "https://ci.example.com/deploy",
+        "help": "POSTed only after you approve"
+      },
+      {
+        "key": "timeout",
+        "label": "Wait for an answer at most",
+        "type": "select",
+        "options": [
+          "1h",
+          "6h",
+          "24h"
+        ],
+        "required": true,
+        "default": "24h",
+        "help": "No answer in time = denied"
       },
       {
         "key": "chat",

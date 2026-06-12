@@ -64,6 +64,11 @@ public record WorkflowDefinition(
     public record Rss(Duration interval, String url) {
     }
 
+    /**
+     * {@code wait} makes a step a durable sleep: no action, the engine just
+     * reschedules the step's queue job to {@code now + wait}. Exactly one of
+     * {@code action} / {@code wait} is set (parser enforces it).
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Step(
             String name,
@@ -72,7 +77,14 @@ public record WorkflowDefinition(
             Map<String, Object> with,
             @JsonProperty("max_attempts") Integer maxAttempts,
             Retry retry,
-            List<String> needs) {
+            List<String> needs,
+            @JsonProperty("wait") Duration waitFor) {
+
+        /** Pre-M6.1 shape — existing call sites and snapshots stay valid. */
+        public Step(String name, String action, String condition, Map<String, Object> with,
+                    Integer maxAttempts, Retry retry, List<String> needs) {
+            this(name, action, condition, with, maxAttempts, retry, needs, null);
+        }
 
         /** Effective max attempts: retry block wins over the legacy top-level field. */
         public Integer effectiveMaxAttempts() {

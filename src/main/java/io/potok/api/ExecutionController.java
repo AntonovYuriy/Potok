@@ -13,16 +13,22 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/executions")
 public class ExecutionController {
 
+
     private final ExecutionRepository executions;
     private final StepExecutionRepository steps;
 
-    public ExecutionController(ExecutionRepository executions, StepExecutionRepository steps) {
+    private final io.potok.execution.ApprovalService approvalService;
+
+    public ExecutionController(ExecutionRepository executions, StepExecutionRepository steps,
+                               io.potok.execution.ApprovalService approvalService) {
+        this.approvalService = approvalService;
         this.executions = executions;
         this.steps = steps;
     }
@@ -36,6 +42,21 @@ public class ExecutionController {
         return executions.list(workflowId, Math.max(page, 0), boundedSize).stream()
                 .map(execution -> ExecutionResponse.from(execution, null))
                 .toList();
+    }
+
+    /** Dashboard Approve/Deny buttons — same one-time semantics as the Telegram links. */
+    @org.springframework.web.bind.annotation.PostMapping("/{id}/steps/{stepName}/decide")
+    public Map<String, Object> decide(@PathVariable UUID id,
+                                      @PathVariable String stepName,
+                                      @org.springframework.web.bind.annotation.RequestBody Map<String, Object> body) {
+        boolean approved = Boolean.TRUE.equals(body.get("approved"));
+        return approvalService.decideByStep(id, stepName, approved)
+                .map(outcome -> Map.<String, Object>of(
+                        "status", outcome.status().name(),
+                        "approved", outcome.approved()))
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND,
+                        "no approval waiting on step '" + stepName + "'"));
     }
 
     @GetMapping("/{id}")

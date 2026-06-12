@@ -1,0 +1,19 @@
+# A reminder that doesn't let go: first message, then a durable sleep, then a
+# follow-up. The pause is a row in Postgres — restarts and deploys don't
+# cancel it.
+name: follow-up-reminder
+trigger:
+  cron: "0 9 * * *"
+steps:
+  - name: remind
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "💳 Pay the insurance"
+  - name: pause
+    wait: 3d
+  - name: follow_up
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "⏰ Still pending? Insurance!"

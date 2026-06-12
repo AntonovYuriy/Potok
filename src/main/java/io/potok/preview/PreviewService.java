@@ -273,6 +273,27 @@ public class PreviewService {
                 ? Map.of()
                 : (Map<String, Object>) templates.resolve(step.with(), context);
 
+        if (step.waitFor() != null) {
+            stepOutputs.put(step.name(), Map.of("simulated", true));
+            return StepPreview.simulated(step.name(), "wait",
+                    "Would sleep " + io.potok.execution.ApprovalService.humanDuration(step.waitFor())
+                            + ", then continue (not slept in preview)", null, null);
+        }
+        if ("approval".equals(step.action())) {
+            java.time.Duration timeout = java.util.Optional.ofNullable(
+                            io.potok.definition.YamlDefinitionParser.parseDuration(
+                                    step.name(), "timeout", input.get("timeout")))
+                    .orElse(io.potok.execution.ApprovalService.DEFAULT_TIMEOUT);
+            stepOutputs.put(step.name(), Map.of("approved", true, "timed_out", false, "simulated", true));
+            Map<String, Object> rendered = new LinkedHashMap<>();
+            rendered.put("question", input.get("text"));
+            return StepPreview.simulated(step.name(), "approval",
+                    "Would ask for approval in Telegram and wait up to "
+                            + io.potok.execution.ApprovalService.humanDuration(timeout)
+                            + " (nothing sent in preview)",
+                    "Steps below are previewed for the APPROVED path; a denial or timeout takes the other branch.",
+                    rendered);
+        }
         if (Instant.now().isAfter(deadline)) {
             return StepPreview.skipped(step.name(), step.action(),
                     "Not run — preview hit the " + budget.toSeconds() + "s time limit", null);

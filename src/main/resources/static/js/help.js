@@ -25,7 +25,7 @@ function renderTemplate(tpl, values) {
 
 const VALIDATORS = {
     url: v => /^https?:\/\/.+/.test(v) || 'must start with http(s)://',
-    duration: v => /^\d+(s|m|h)$/.test(v) || 'use forms like 30s, 10m, 1h',
+    duration: v => /^\d+(s|m|h|d)$/.test(v) || 'use forms like 30s, 10m, 1h, 3d',
     cron: v => v.trim().split(/\s+/).length === 5 || 'needs 5 space-separated fields',
     number: v => /^-?\d+(\.\d+)?$/.test(v) || 'must be a number',
     string: v => v.trim().length > 0 || 'cannot be empty',

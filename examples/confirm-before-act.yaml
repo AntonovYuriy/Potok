@@ -1,0 +1,34 @@
+# Human-in-the-loop: an external service calls the webhook, YOU get the
+# question in Telegram with one-time approve/deny links, and only a "yes"
+# triggers the action. Silence past the timeout counts as "no".
+name: confirm-before-act
+trigger:
+  webhook:
+    path: "confirm"
+steps:
+  - name: ask
+    action: approval
+    with:
+      text: "Run the action?"
+      timeout: 24h
+  - name: act
+    if: "{{ steps.ask.approved == true }}"
+    action: http
+    with:
+      method: POST
+      url: "https://example.com/hook"
+      body: "approved"
+  - name: confirm
+    needs: [act]
+    if: "{{ steps.ask.approved == true }}"
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "✅ Done — action triggered after your approval"
+  - name: cancelled
+    needs: [ask]
+    if: "{{ steps.ask.approved == false }}"
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "🚫 Not done — denied or timed out"

@@ -20,6 +20,7 @@ services:
       POTOK_LOG_JSON: ${POTOK_LOG_JSON:-false}
       POTOK_DLQ_TELEGRAM: ${POTOK_DLQ_TELEGRAM:-false}
       POTOK_ALLOW_PRIVATE_URLS: ${POTOK_ALLOW_PRIVATE_URLS:-false}
+      POTOK_PUBLIC_URL: ${POTOK_PUBLIC_URL:-http://localhost:8080}
     depends_on:
       postgres:
         condition: service_healthy

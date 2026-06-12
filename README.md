@@ -254,9 +254,13 @@ A step can pause without holding anything in memory:
 
 `wait` re-parks the step's queue job at `now + duration` — restarts and
 deploys can't cancel it, because there is nothing running to kill. `approval`
-sends ONE Telegram message with two **one-time links** (only SHA-256 hashes
-are stored; `POTOK_PUBLIC_URL` controls the link host) and parks the same
-way until a click, a dashboard button, or the timeout. The decision becomes
+sends ONE Telegram message with two **inline buttons**: a tap answers right
+in the chat (toast + the message loses its buttons and shows the outcome) —
+no browser involved. Under the hood the buttons carry one-time tokens (only
+SHA-256 hashes are stored); a small `getUpdates` long-poller picks taps up
+(`POTOK_TELEGRAM_POLL_UPDATES=false` switches the buttons to one-time links
+instead — `POTOK_PUBLIC_URL` controls the link host). The approval parks the
+step until a tap, a dashboard button, or the timeout. The decision becomes
 the step's output — `{approved, timed_out}` — and downstream steps branch on
 it with ordinary conditions: `if: "{{ steps.ask.approved == true }}"`.
 A timeout is a **result**, never a failure: nothing retries, nothing hits
@@ -303,6 +307,7 @@ Errors are RFC 7807 `application/problem+json`.
 | `POTOK_ALLOW_PRIVATE_URLS` | `false` | disable the SSRF guard (see Security) |
 | `POTOK_PREVIEW_TIMEOUT` | `PT10S` | wall-clock budget for `/api/preview` |
 | `POTOK_PUBLIC_URL` | `http://localhost:8080` | base URL for approval links in Telegram |
+| `POTOK_TELEGRAM_POLL_UPDATES` | `true` | native button taps via getUpdates; `false` = URL buttons |
 | `POTOK_LOG_JSON` | `false` | structured JSON logs |
 | `POTOK_TELEGRAM_API_BASE` | `https://api.telegram.org` | Bot API base (tests/self-hosted) |
 

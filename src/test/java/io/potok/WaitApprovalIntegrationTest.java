@@ -35,7 +35,7 @@ class WaitApprovalIntegrationTest extends IntegrationTestBase {
     }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Pattern TOKEN = Pattern.compile("/hooks/approval/([0-9a-f]{64})");
+    private static final Pattern TOKEN = Pattern.compile("/hooks/approval/([0-9a-f]{32})");
 
     private String createAndRun(String yaml) {
         ResponseEntity<Map<String, Object>> created = postYaml("/api/workflows", yaml);

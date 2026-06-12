@@ -51,9 +51,15 @@ public class ExecutionController {
                                       @org.springframework.web.bind.annotation.RequestBody Map<String, Object> body) {
         boolean approved = Boolean.TRUE.equals(body.get("approved"));
         return approvalService.decideByStep(id, stepName, approved)
-                .map(outcome -> Map.<String, Object>of(
-                        "status", outcome.status().name(),
-                        "approved", outcome.approved()))
+                .map(outcome -> {
+                    if ("DECIDED".equals(outcome.status().name())) {
+                        approvalService.reflectDecisionInChat(outcome.approval().id(),
+                                outcome.approved() ? "✅ Approved (dashboard)" : "❌ Denied (dashboard)");
+                    }
+                    return Map.<String, Object>of(
+                            "status", outcome.status().name(),
+                            "approved", outcome.approved());
+                })
                 .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                         org.springframework.http.HttpStatus.NOT_FOUND,
                         "no approval waiting on step '" + stepName + "'"));

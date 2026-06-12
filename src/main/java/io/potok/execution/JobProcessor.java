@@ -240,6 +240,8 @@ public class JobProcessor {
                         "timed_out", true,
                         "decided_at", Instant.now().toString()));
                 log.info("approval_timed_out executionId={} step={}", execution.id(), step.name());
+                approvalService.reflectDecisionInChat(approval.get().id(),
+                        "⌛ Expired without an answer — counted as a no");
                 onStepFinished(job, definition, workflow.name(), execution.id());
             } else {
                 jobQueue.delete(job.id()); // decided in a race — the click path already advanced

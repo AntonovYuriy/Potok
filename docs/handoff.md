@@ -1,8 +1,16 @@
 # Handoff
 
-_Last updated: 2026-06-11 (M5.4 done)._
+_Last updated: 2026-06-12 (M6.1 done)._
 
 ## Current state
+
+- **M6.1 done — durable waits + human-in-the-loop approvals** (2026-06-12, PR #14, squash `431745b`, 195 tests):
+  - `wait: <duration>` step field: durable sleep via job_queue.run_at reschedule (no action/with, never retried); durations gain `d` units everywhere (parser + form validator). `action: approval`: ONE telegram message with two one-time links (`GET /hooks/approval/<token>`, public — token is the credential; SHA-256 hashes only in new `approval` table, Flyway V9), step parks WAITING, worker released. Decision (click / dashboard Approve-Deny buttons / `POST /api/executions/{id}/steps/{step}/decide` / timeout) → step SUCCEEDED with `{approved, timed_out, decided_at}`; downstream branches via ordinary `if:`. **Timeout = result, never failure** (no retry/DLQ); telegram send failure = normal retry semantics. `POTOK_PUBLIC_URL` (default localhost:8080) controls link host.
+  - WAITING first-class for steps AND executions (V9 widens both check constraints); UI: yellow badge, "sleeping until"/"waiting for approval" notes, Approve/Deny on the step card. DAG advance extracted to `ExecutionAdvancer` (JobProcessor + approval clicks share it). Preview simulates both (downstream shown for approved path).
+  - **Backward-compat standing rule starts here**: approval needs only `text` (timeout→24h, channel→telegram, chat_id→TELEGRAM_CHAT_ID); pre-M6.1 YAML identical behavior (compat Step ctor keeps old jsonb snapshots valid; drift harness untouched).
+  - Catalog 15 cards: follow-up-reminder (2nd; message → wait Nd → follow-up), confirm-before-act (4th; webhook → approval → act/cancelled). README "Durable waits & approvals", use-cases 15 sections, reference rows, demo.gif re-recorded with approval frame.
+  - Tests incl. **RestartSurvivalIntegrationTest**: app #1 parks wait+approval and closes; app #2 on the same DB wakes the sleeper on time and honors the dead process's link. Test infra: per-context Hikari pool capped at 3 (src/test/resources/application.properties) — context count outgrew Postgres max_connections.
+  - Live-verified (compose, real telegram): follow-up 60s — both real messages, slept PT1M; confirm-before-act — curl webhook → real question with links on the phone → approve → stub got exactly 1 POST → "done" message; WAITING screenshot.
 
 - **M5.4 done — audit nits** (2026-06-11, PR #13, squash `8d4ffcd`, 184 tests):
   - Quote-safe template params: render filters `{{param.x|cond}}` (double-quoted condition literal inside single-quoted YAML: `\`/`"` backslash-escaped, `'` doubled) and `{{param.x|dq}}` (double-quoted YAML scalar) — Java TemplateRenderer + JS twin in help.js, identical semantics. TemplateResolver understands backslash escapes inside condition string literals (quote tracking skips them, operands unescape). keyword-on-page uses both; O'Brien / say "hi" / mixed-quote keywords create 2xx (integration test).
@@ -85,6 +93,10 @@ _Last updated: 2026-06-11 (M5.4 done)._
 - 5-field cron specs get a leading `0` (`YamlDefinitionParser.normalizeCron`); fire-time re-check of `enabled`.
 
 ## Known issues / gaps
+
+- Approval channel is telegram-only (channel param validated, but no other senders yet — B3 action pack would unlock email/slack).
+- No "cancel execution" API: a WAITING approval can only be decided or left to expire; an unwanted parked wait runs to completion.
+- `wait` duration is unbounded — a typo like `wait: 300d` parks a job for a year with no admin override (cancel API would solve both).
 
 - Dashboard list still does N+1 last-run fetches (fine for small N); no SSE — views poll every 7s.
 - Tokens have no scopes — any active token = full API (except root-only admin); no users/RBAC.

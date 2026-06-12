@@ -52,6 +52,7 @@ potok:
     refresh-interval: ${POTOK_CRON_REFRESH_INTERVAL:PT30S}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
+    poll-updates: ${POTOK_TELEGRAM_POLL_UPDATES:true}
     api-base: ${POTOK_TELEGRAM_API_BASE:https://api.telegram.org}
     default-chat-id: ${TELEGRAM_CHAT_ID:}
   dlq:

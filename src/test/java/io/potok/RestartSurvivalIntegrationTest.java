@@ -151,7 +151,7 @@ class RestartSurvivalIntegrationTest {
     }
 
     private static String approveTokenFromStub() {
-        Pattern token = Pattern.compile("/hooks/approval/([0-9a-f]{64})");
+        Pattern token = Pattern.compile("/hooks/approval/([0-9a-f]{32})");
         for (var request : STUB.findAll(postRequestedFor(urlPathMatching("/bot.*/sendMessage")))) {
             String body = request.getBodyAsString();
             if (body.contains("Survive restart?")) {

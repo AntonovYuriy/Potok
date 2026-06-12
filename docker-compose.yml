@@ -21,6 +21,7 @@ services:
       POTOK_DLQ_TELEGRAM: ${POTOK_DLQ_TELEGRAM:-false}
       POTOK_ALLOW_PRIVATE_URLS: ${POTOK_ALLOW_PRIVATE_URLS:-false}
       POTOK_PUBLIC_URL: ${POTOK_PUBLIC_URL:-http://localhost:8080}
+      POTOK_TELEGRAM_POLL_UPDATES: ${POTOK_TELEGRAM_POLL_UPDATES:-true}
     depends_on:
       postgres:
         condition: service_healthy

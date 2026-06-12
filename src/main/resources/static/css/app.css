@@ -99,6 +99,7 @@ td a:hover { text-decoration: underline; }
 .status.RUNNING { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
 .status.PENDING { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
 .status.SKIPPED { background: color-mix(in srgb, var(--skip) 22%, transparent); color: var(--skip); }
+.status.WAITING { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
 .status.disabled { background: var(--surface-2); color: var(--muted); }
 .status.enabled { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 
@@ -150,6 +151,7 @@ pre.yaml {
 .step.RUNNING { border-left-color: var(--accent); }
 .step.SKIPPED { border-left-color: var(--skip); }
 .step.PENDING { border-left-color: var(--warn); }
+.step.WAITING { border-left-color: var(--warn); }
 .step .error { color: var(--fail); font-family: var(--mono); font-size: .82rem; white-space: pre-wrap; }
 .step details { margin-top: .3rem; }
 .step summary { cursor: pointer; color: var(--muted); font-size: .82rem; }

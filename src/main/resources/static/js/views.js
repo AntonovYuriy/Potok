@@ -140,6 +140,15 @@ export async function workflowDetail(id, page = 0) {
 
 export async function executionDetail(id) {
     const execution = await api(`/api/executions/${id}`);
+    // a WAITING step is either a durable sleep or an approval pending a decision
+    const waitingNote = s => s.status !== 'WAITING' ? '' :
+        s.output?.sleeping_until
+            ? `<div class="muted">😴 sleeping until ${fmtTime(s.output.sleeping_until)}</div>`
+            : `<div class="muted">⏳ waiting for approval, expires ${fmtTime(s.output?.expires_at)}</div>
+               <div class="toolbar">
+                   <button data-decide="${esc(s.name)}" data-approved="true">✅ Approve</button>
+                   <button class="danger" data-decide="${esc(s.name)}" data-approved="false">❌ Deny</button>
+               </div>`;
     const steps = (execution.steps ?? []).map(s => `
         <div class="step ${esc(s.status)}">
             <div>
@@ -148,6 +157,7 @@ export async function executionDetail(id) {
             </div>
             <div>
                 <span class="muted">attempt ${s.attempt} · ${duration(s.startedAt, s.finishedAt) || '—'}</span>
+                ${waitingNote(s)}
                 ${s.error ? `<div class="error">${esc(s.error)}</div>` : ''}
                 ${s.output ? `<details><summary>output</summary><pre>${esc(JSON.stringify(s.output, null, 2).slice(0, 4000))}</pre></details>` : ''}
                 ${s.input ? `<details><summary>input</summary><pre>${esc(JSON.stringify(s.input, null, 2).slice(0, 4000))}</pre></details>` : ''}
@@ -164,6 +174,13 @@ export async function executionDetail(id) {
             <details><summary class="muted">trigger payload</summary><pre>${esc(JSON.stringify(execution.triggerInfo, null, 2).slice(0, 4000))}</pre></details>
         </div>
         <div class="steps">${steps}</div>`;
+
+    view().querySelectorAll('[data-decide]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/executions/${id}/steps/${encodeURIComponent(b.dataset.decide)}/decide`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approved: b.dataset.approved === 'true' }),
+        }), () => executionDetail(id)));
 }
 
 export async function dlqList() {

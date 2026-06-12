@@ -17,18 +17,24 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Executes one claimed job: runs the step's action and advances the execution.
+ * Executes one claimed job: runs the step's action and advances the execution
+ * (the DAG bookkeeping itself lives in {@link ExecutionAdvancer} so external
+ * resumes — approval clicks — share it).
  *
  * Deliberately NOT transactional around the action call — actions do external
  * I/O, so the only guard while they run is the job_queue lease (locked_until).
  * That yields at-least-once semantics; re-deliveries of already-SUCCEEDED
  * steps are skipped, which is the idempotency contract.
+ *
+ * Durable pauses: a 'wait' step and a waiting approval park their job with
+ * run_at in the future — pure rows in Postgres, so they survive restarts by
+ * construction. An approval's wake-up at expires_at resolves it as a
+ * timed-out RESULT (never a failure, never the DLQ).
  *
  * Retry exhaustion moves the job to the dead_letter table (full context
  * snapshot) before failing the execution; /api/dlq can requeue it later.
@@ -48,6 +54,9 @@ public class JobProcessor {
     private final RetryPolicy retryPolicy;
     private final PotokMetrics metrics;
     private final ApplicationEventPublisher events;
+    private final ExecutionAdvancer advancer;
+    private final ApprovalService approvalService;
+    private final ApprovalRepository approvals;
 
     public JobProcessor(WorkflowRepository workflows,
                         ExecutionRepository executions,
@@ -58,7 +67,10 @@ public class JobProcessor {
                         TemplateResolver templates,
                         RetryPolicy retryPolicy,
                         PotokMetrics metrics,
-                        ApplicationEventPublisher events) {
+                        ApplicationEventPublisher events,
+                        ExecutionAdvancer advancer,
+                        ApprovalService approvalService,
+                        ApprovalRepository approvals) {
         this.workflows = workflows;
         this.executions = executions;
         this.steps = steps;
@@ -69,6 +81,9 @@ public class JobProcessor {
         this.retryPolicy = retryPolicy;
         this.metrics = metrics;
         this.events = events;
+        this.advancer = advancer;
+        this.approvalService = approvalService;
+        this.approvals = approvals;
     }
 
     public void process(QueuedJob job) {
@@ -130,6 +145,17 @@ public class JobProcessor {
             return;
         }
 
+        if (step.waitFor() != null) {
+            handleWait(job, definition, workflow.name(), execution, step,
+                    existing.map(StepExecution::status).orElse(null));
+            return;
+        }
+        if ("approval".equals(step.action())) {
+            handleApproval(job, definition, workflow, execution, step, context,
+                    existing.map(StepExecution::status).orElse(null));
+            return;
+        }
+
         ActionHandler handler = actions.find(step.action());
         if (handler == null) {
             steps.markFailed(execution.id(), step.name(),
@@ -174,6 +200,85 @@ public class JobProcessor {
         }
     }
 
+    /**
+     * Durable sleep: first delivery parks the job at now+wait; the wake-up
+     * delivery (row already WAITING) completes the step. No retries — there
+     * is nothing to fail.
+     */
+    private void handleWait(QueuedJob job, WorkflowDefinition definition, String workflowName,
+                            WorkflowExecution execution, WorkflowDefinition.Step step,
+                            StepStatus currentStatus) {
+        if (currentStatus == StepStatus.WAITING) {
+            steps.markSucceeded(execution.id(), step.name(), Map.of(
+                    "slept", step.waitFor().toString(),
+                    "woke_at", Instant.now().toString()));
+            log.info("step_woke executionId={} step={}", execution.id(), step.name());
+            onStepFinished(job, definition, workflowName, execution.id());
+            return;
+        }
+        Instant wakeAt = Instant.now().plus(step.waitFor());
+        steps.markWaiting(execution.id(), step.name(), Map.of("sleeping_until", wakeAt.toString()));
+        executions.markWaiting(execution.id());
+        jobQueue.rescheduleTo(job.id(), wakeAt);
+        log.info("step_sleeping executionId={} step={} until={}", execution.id(), step.name(), wakeAt);
+    }
+
+    /**
+     * Approval: first delivery asks (telegram failure follows normal retry
+     * semantics) and parks the job at expires_at; the wake-up delivery — if
+     * still undecided — resolves it as a timed-out RESULT. Link clicks finish
+     * the step out-of-band via ApprovalService.
+     */
+    private void handleApproval(QueuedJob job, WorkflowDefinition definition, Workflow workflow,
+                                WorkflowExecution execution, WorkflowDefinition.Step step,
+                                Map<String, Object> context, StepStatus currentStatus) {
+        if (currentStatus == StepStatus.WAITING) {
+            Optional<Approval> approval = approvals.find(execution.id(), step.name());
+            if (approval.isPresent() && approvals.decide(approval.get().id(), "timed_out")) {
+                steps.markSucceeded(execution.id(), step.name(), Map.of(
+                        "approved", false,
+                        "timed_out", true,
+                        "decided_at", Instant.now().toString()));
+                log.info("approval_timed_out executionId={} step={}", execution.id(), step.name());
+                onStepFinished(job, definition, workflow.name(), execution.id());
+            } else {
+                jobQueue.delete(job.id()); // decided in a race — the click path already advanced
+            }
+            return;
+        }
+
+        int attempt = job.attempts() + 1;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> input = step.with() == null
+                ? Map.of()
+                : (Map<String, Object>) templates.resolve(step.with(), context);
+        steps.markRunning(execution.id(), step.name(), attempt, input);
+        try {
+            Instant expiresAt = approvalService.ask(execution.id(), workflow.name(), step.name(), input);
+            steps.markWaiting(execution.id(), step.name(), Map.of(
+                    "waiting_for", "approval",
+                    "expires_at", expiresAt.toString()));
+            executions.markWaiting(execution.id());
+            jobQueue.rescheduleTo(job.id(), expiresAt);
+        } catch (Exception e) {
+            String error = io.potok.common.Errors.describe(e);
+            if (retryPolicy.shouldRetry(attempt, step)) {
+                Instant nextRun = retryPolicy.nextRunAt(Instant.now(), attempt, step);
+                steps.markFailed(execution.id(), step.name(), error, false);
+                jobQueue.scheduleRetry(job.id(), nextRun);
+                metrics.stepRetried();
+                log.warn("approval_ask_retry executionId={} step={} attempt={} error={}",
+                        execution.id(), step.name(), attempt, error);
+            } else {
+                steps.markFailed(execution.id(), step.name(), error, true);
+                deadLetter(job, workflow, execution, step, attempt, error, input);
+                onStepFailedFinally(job, definition, workflow.name(), execution.id(), step);
+                log.warn("approval_ask_failed executionId={} step={} attempts={} error={}",
+                        execution.id(), step.name(), attempt, error);
+            }
+        }
+    }
+
     private void deadLetter(QueuedJob job, Workflow workflow, WorkflowExecution execution,
                             WorkflowDefinition.Step step, int attempts, String error,
                             Map<String, Object> input) {
@@ -186,109 +291,15 @@ public class JobProcessor {
         log.warn("job_dead_lettered executionId={} step={} attempts={}", execution.id(), step.name(), attempts);
     }
 
-    /**
-     * Step reached a satisfied terminal state (SUCCEEDED or condition-SKIPPED):
-     * enqueue every step whose needs are now all satisfied, then finish the
-     * execution if the whole graph is terminal.
-     */
     private void onStepFinished(QueuedJob job, WorkflowDefinition definition, String workflowName, UUID executionId) {
-        enqueueReadySteps(definition, executionId);
-        finishIfComplete(definition, workflowName, executionId);
+        advancer.onStepSatisfied(definition, workflowName, executionId);
         jobQueue.delete(job.id());
     }
 
-    /**
-     * Step failed for good: poison everything downstream (those steps are
-     * SKIPPED, not FAILED), let independent branches keep running, finish when
-     * the graph is terminal — final status will be FAILED.
-     */
     private void onStepFailedFinally(QueuedJob job, WorkflowDefinition definition, String workflowName,
                                      UUID executionId, WorkflowDefinition.Step failedStep) {
-        cascadeSkipDownstream(definition, executionId, failedStep.name());
-        finishIfComplete(definition, workflowName, executionId);
+        advancer.onStepFailedFinally(definition, workflowName, executionId, failedStep.name());
         jobQueue.delete(job.id());
-    }
-
-    static final String DEPENDENCY_FAILED_PREFIX = "dependency failed: ";
-
-    private void cascadeSkipDownstream(WorkflowDefinition definition, UUID executionId, String failedName) {
-        Map<String, StepExecution> rows = stepRowsByName(executionId);
-        java.util.Set<String> poisoned = new java.util.HashSet<>();
-        poisoned.add(failedName);
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            for (WorkflowDefinition.Step step : definition.steps()) {
-                if (poisoned.contains(step.name()) || isTerminal(rows.get(step.name()))) {
-                    continue;
-                }
-                List<String> needs = definition.effectiveNeeds(step.name());
-                Optional<String> badNeed = needs.stream().filter(poisoned::contains).findFirst();
-                if (badNeed.isPresent()) {
-                    steps.markSkipped(executionId, step.name(),
-                            DEPENDENCY_FAILED_PREFIX + badNeed.get());
-                    log.info("step_skipped_dependency executionId={} step={} failedDependency={}",
-                            executionId, step.name(), badNeed.get());
-                    poisoned.add(step.name());
-                    changed = true;
-                }
-            }
-        }
-    }
-
-    private void enqueueReadySteps(WorkflowDefinition definition, UUID executionId) {
-        Map<String, StepExecution> rows = stepRowsByName(executionId);
-        for (WorkflowDefinition.Step step : definition.steps()) {
-            StepExecution row = rows.get(step.name());
-            if (row != null) {
-                continue; // terminal, running, or awaiting retry — all have a row
-            }
-            boolean ready = definition.effectiveNeeds(step.name()).stream()
-                    .allMatch(need -> isSatisfied(rows.get(need)));
-            if (ready) {
-                // ON CONFLICT dedupes the join step when two branches finish at once
-                jobQueue.enqueue(executionId, step.name(), Instant.now());
-            }
-        }
-    }
-
-    private void finishIfComplete(WorkflowDefinition definition, String workflowName, UUID executionId) {
-        Map<String, StepExecution> rows = stepRowsByName(executionId);
-        boolean allTerminal = definition.steps().stream()
-                .allMatch(step -> isTerminal(rows.get(step.name())));
-        if (!allTerminal) {
-            return;
-        }
-        boolean anyFailed = rows.values().stream().anyMatch(r -> r.status() == StepStatus.FAILED);
-        ExecutionStatus finalStatus = anyFailed ? ExecutionStatus.FAILED : ExecutionStatus.SUCCEEDED;
-        if (executions.markFinished(executionId, finalStatus)) {
-            if (anyFailed) {
-                metrics.executionFailed();
-                log.warn("execution_failed executionId={} workflow={}", executionId, workflowName);
-            } else {
-                metrics.executionSucceeded();
-                log.info("execution_succeeded executionId={} workflow={}", executionId, workflowName);
-            }
-        }
-    }
-
-    private Map<String, StepExecution> stepRowsByName(UUID executionId) {
-        Map<String, StepExecution> byName = new LinkedHashMap<>();
-        for (StepExecution row : steps.findByExecution(executionId)) {
-            byName.put(row.stepName(), row);
-        }
-        return byName;
-    }
-
-    private static boolean isTerminal(StepExecution row) {
-        return row != null && (row.status() == StepStatus.SUCCEEDED
-                || row.status() == StepStatus.FAILED
-                || row.status() == StepStatus.SKIPPED);
-    }
-
-    /** SUCCEEDED satisfies a need; so does SKIPPED — dependency-skips cascade eagerly, so any SKIPPED seen here is a condition-skip. */
-    private static boolean isSatisfied(StepExecution row) {
-        return row != null && (row.status() == StepStatus.SUCCEEDED || row.status() == StepStatus.SKIPPED);
     }
 
     private void failExecution(QueuedJob job, UUID executionId, String reason) {

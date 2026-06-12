@@ -385,4 +385,97 @@ class YamlDefinitionParserTest {
         assertThat(with.get("verbose")).isEqualTo(true);
         assertThat(with.get("nested")).isEqualTo(Map.of("a", 1));
     }
+
+    @Test
+    void waitStepParsesAndExcludesAction() {
+        var definition = parser.parse("""
+                name: w
+                trigger:
+                  cron: "0 9 * * *"
+                steps:
+                  - name: first
+                    action: http
+                    with: { url: "https://example.com" }
+                  - name: pause
+                    wait: 3d
+                  - name: second
+                    action: http
+                    with: { url: "https://example.com" }
+                """);
+        assertThat(definition.step("pause").waitFor()).isEqualTo(java.time.Duration.ofDays(3));
+        assertThat(definition.step("pause").action()).isNull();
+
+        assertThatThrownBy(() -> parser.parse("""
+                name: w
+                trigger:
+                  cron: "0 9 * * *"
+                steps:
+                  - name: bad
+                    action: http
+                    wait: 5m
+                    with: { url: "https://example.com" }
+                """)).hasMessageContaining("mutually exclusive");
+
+        assertThatThrownBy(() -> parser.parse("""
+                name: w
+                trigger:
+                  cron: "0 9 * * *"
+                steps:
+                  - name: bad
+                    wait: 5m
+                    with: { url: "https://example.com" }
+                """)).hasMessageContaining("no 'with'");
+
+        assertThatThrownBy(() -> parser.parse("""
+                name: w
+                trigger:
+                  cron: "0 9 * * *"
+                steps:
+                  - name: bad
+                """)).hasMessageContaining("either 'action' or 'wait'");
+    }
+
+    @Test
+    void approvalValidationAndDefaults() {
+        // backward-compat rule: minimal config — only text is required
+        var minimal = parser.parse("""
+                name: a
+                trigger:
+                  webhook: { path: "x" }
+                steps:
+                  - name: ask
+                    action: approval
+                    with: { text: "Deploy?" }
+                """);
+        assertThat(minimal.step("ask").action()).isEqualTo("approval");
+
+        assertThatThrownBy(() -> parser.parse("""
+                name: a
+                trigger:
+                  webhook: { path: "x" }
+                steps:
+                  - name: ask
+                    action: approval
+                """)).hasMessageContaining("with.text");
+
+        assertThatThrownBy(() -> parser.parse("""
+                name: a
+                trigger:
+                  webhook: { path: "x" }
+                steps:
+                  - name: ask
+                    action: approval
+                    with: { text: "Deploy?", channel: "smoke-signals" }
+                """)).hasMessageContaining("only: telegram");
+
+        assertThatThrownBy(() -> parser.parse("""
+                name: a
+                trigger:
+                  webhook: { path: "x" }
+                steps:
+                  - name: ask
+                    action: approval
+                    with: { text: "Deploy?", timeout: "yes please" }
+                """)).hasMessageContaining("duration");
+    }
 }

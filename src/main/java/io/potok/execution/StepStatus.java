@@ -1,5 +1,5 @@
 package io.potok.execution;
 
 public enum StepStatus {
-    PENDING, RUNNING, SUCCEEDED, FAILED, SKIPPED
+    PENDING, RUNNING, WAITING, SUCCEEDED, FAILED, SKIPPED
 }

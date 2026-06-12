@@ -301,25 +301,59 @@ public class YamlDefinitionParser {
                 throw new InvalidDefinitionException("duplicate step name '" + name + "'");
             }
             String action = stringField(stepMap, "action");
-            if (action == null || action.isBlank()) {
-                throw new InvalidDefinitionException("step '" + name + "': 'action' is required");
+            java.time.Duration wait = parseDuration(name, "wait", stepMap.get("wait"));
+            boolean hasAction = action != null && !action.isBlank();
+            if (hasAction == (wait != null)) {
+                throw new InvalidDefinitionException(wait != null
+                        ? "step '" + name + "': 'wait' and 'action' are mutually exclusive"
+                        : "step '" + name + "': either 'action' or 'wait' is required");
             }
             Object with = stepMap.get("with");
             if (with != null && !(with instanceof Map)) {
                 throw new InvalidDefinitionException("step '" + name + "': 'with' must be a mapping");
             }
+            if (wait != null && with != null) {
+                throw new InvalidDefinitionException(
+                        "step '" + name + "': a 'wait' step takes no 'with' inputs");
+            }
+            if ("approval".equals(action)) {
+                validateApproval(name, with);
+            }
             Object condition = stepMap.get("if");
             Integer maxAttemptsValue = positiveInt(name, "max_attempts", stepMap.get("max_attempts"));
             steps.add(new WorkflowDefinition.Step(
                     name,
-                    action,
+                    hasAction ? action : null,
                     condition == null ? null : condition.toString(),
                     with == null ? null : (Map<String, Object>) with,
                     maxAttemptsValue,
                     parseRetry(name, stepMap.get("retry")),
-                    parseNeeds(name, stepMap.get("needs"))));
+                    parseNeeds(name, stepMap.get("needs")),
+                    wait));
         }
         return steps;
+    }
+
+    /**
+     * approval defaults (backward-compat rule: minimal config works):
+     * only 'text' is required; timeout absent -> 24h, channel absent -> telegram.
+     */
+    private void validateApproval(String stepName, Object with) {
+        Map<?, ?> map = with instanceof Map<?, ?> m ? m : Map.of();
+        Object text = map.get("text");
+        if (text == null || text.toString().isBlank()) {
+            throw new InvalidDefinitionException(
+                    "step '" + stepName + "': approval requires 'with.text' (the question to ask)");
+        }
+        Object timeout = map.get("timeout");
+        if (timeout != null && !timeout.toString().contains("{{")) {
+            parseDuration(stepName, "timeout", timeout); // templated values are validated at run time
+        }
+        Object channel = map.get("channel");
+        if (channel != null && !"telegram".equals(channel.toString())) {
+            throw new InvalidDefinitionException("step '" + stepName
+                    + "': approval channel '" + channel + "' is not supported (only: telegram)");
+        }
     }
 
     private List<String> parseNeeds(String stepName, Object raw) {
@@ -368,8 +402,8 @@ public class YamlDefinitionParser {
         return intValue;
     }
 
-    /** Accepts "500ms", "10s", "5m", "2h", a plain integer (seconds), or ISO-8601 ("PT10S"). */
-    static java.time.Duration parseDuration(String stepName, String field, Object raw) {
+    /** Accepts "500ms", "10s", "5m", "2h", "3d", a plain integer (seconds), or ISO-8601 ("PT10S"). */
+    public static java.time.Duration parseDuration(String stepName, String field, Object raw) {
         if (raw == null) {
             return null;
         }
@@ -378,13 +412,14 @@ public class YamlDefinitionParser {
             parsed = java.time.Duration.ofSeconds(seconds);
         } else {
             String text = raw.toString().trim();
-            var matcher = java.util.regex.Pattern.compile("(\\d+)(ms|s|m|h)").matcher(text);
+            var matcher = java.util.regex.Pattern.compile("(\\d+)(ms|s|m|h|d)").matcher(text);
             if (matcher.matches()) {
                 long amount = Long.parseLong(matcher.group(1));
                 parsed = switch (matcher.group(2)) {
                     case "ms" -> java.time.Duration.ofMillis(amount);
                     case "s" -> java.time.Duration.ofSeconds(amount);
                     case "m" -> java.time.Duration.ofMinutes(amount);
+                    case "d" -> java.time.Duration.ofDays(amount);
                     default -> java.time.Duration.ofHours(amount);
                 };
             } else {

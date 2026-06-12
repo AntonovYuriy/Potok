@@ -70,12 +70,23 @@ public class ExecutionRepository {
         return spec.query(rowMapper).list();
     }
 
-    /** PENDING -> RUNNING transition; no-op when already running or finished. */
+    /** PENDING/WAITING -> RUNNING transition (WAITING resumes on wake/decision); no-op otherwise. */
     public void markRunning(UUID id) {
         jdbc.sql("""
                         update workflow_execution
                         set status = 'RUNNING', started_at = coalesce(started_at, now())
-                        where id = :id and status = 'PENDING'
+                        where id = :id and status in ('PENDING', 'WAITING')
+                        """)
+                .param("id", id)
+                .update();
+    }
+
+    /** RUNNING/PENDING -> WAITING: the execution has a step durably parked (wait/approval). */
+    public void markWaiting(UUID id) {
+        jdbc.sql("""
+                        update workflow_execution
+                        set status = 'WAITING', started_at = coalesce(started_at, now())
+                        where id = :id and status in ('PENDING', 'RUNNING')
                         """)
                 .param("id", id)
                 .update();
@@ -86,7 +97,7 @@ public class ExecutionRepository {
         return jdbc.sql("""
                         update workflow_execution
                         set status = :status, finished_at = now()
-                        where id = :id and status in ('PENDING', 'RUNNING')
+                        where id = :id and status in ('PENDING', 'RUNNING', 'WAITING')
                         """)
                 .param("id", id)
                 .param("status", status.name())

@@ -1,6 +1,6 @@
 # Use cases
 
-Thirteen real automations, each a single YAML file from [examples/](../examples).
+Fifteen real automations, each a single YAML file from [examples/](../examples).
 The easy way: dashboard → Help → Examples → pick a card → fill the short form
 (Preview ▶ shows what would happen right now before you commit). The curl way:
 `curl -H 'Content-Type: text/plain' --data-binary @examples/<file> host/api/workflows`.
@@ -28,7 +28,34 @@ steps:
 
 > Don't forget: drink some water 💧
 
-## 2. Watch a number from any API
+## 2. Remind me — and don't let it go
+
+One reminder is easy to dismiss. This one comes back: a message now, a durable
+pause, a follow-up. The pause is a `run_at` timestamp in Postgres — restarts
+and deploys can't cancel it.
+
+```yaml
+name: follow-up-reminder
+trigger:
+  cron: "0 9 * * *"
+steps:
+  - name: remind
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "💳 Pay the insurance"
+  - name: pause
+    wait: 3d
+  - name: follow_up
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "⏰ Still pending? Insurance!"
+```
+
+> 💳 Pay the insurance → *(3 days later)* → ⏰ Still pending? Insurance!
+
+## 3. Watch a number from any API
 
 Exchange rates, prices, temperatures, follower counts — if it's a number in a
 public API, Potok can watch it. Edge-triggered: exactly one message when the
@@ -53,7 +80,42 @@ steps:
 
 > 📈 The value is now 4.3120 (> 4.30) — https://api.nbp.pl/…
 
-## 3. Get told when a page mentions something
+## 4. Ask me before doing it (human-in-the-loop)
+
+A service wants to act — deploy, publish, order — but you want the final
+word. The webhook becomes a Telegram question with one-time approve/deny
+links; only your "yes" triggers the action, and silence past the timeout
+counts as "no". The decision is the step's output, so the DAG just branches
+on it.
+
+```yaml
+name: confirm-before-act
+trigger:
+  webhook:
+    path: "confirm"
+steps:
+  - name: ask
+    action: approval
+    with:
+      text: "Deploy v2.3 to prod?"
+      timeout: 6h
+  - name: act
+    if: "{{ steps.ask.approved == true }}"
+    action: http
+    with: { method: POST, url: "https://ci.example.com/deploy", body: "approved" }
+  - name: cancelled
+    needs: [ask]
+    if: "{{ steps.ask.approved == false }}"
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "🚫 Not done — denied or timed out"
+```
+
+> Deploy v2.3 to prod?
+> ✅ Approve: https://… ❌ Deny: https://… ⏳ Expires in 6h
+
+## 5. Get told when a page mentions something
 
 Waiting for a name in the results list, a city added to a tour, your street in
 a roadworks notice? Potok reads the page text and messages you once when the
@@ -77,7 +139,7 @@ steps:
 
 > 🔎 "Warsaw" just appeared on https://band.example.com/tour
 
-## 4. Know when a price drops
+## 6. Know when a price drops
 
 Pick the price element on any shop page and name your limit. `number: true`
 turns price tags like "249,99 zł" or "$1,299.00" into numbers, so the
@@ -101,7 +163,7 @@ steps:
 
 > 💸 Price dropped to 189.99 (under 200): https://shop.example.com/product/123
 
-## 5. Never miss a recurring payment
+## 7. Never miss a recurring payment
 
 Rent, insurance, the subscription you keep forgetting about. One message on
 the same day every month — days 1–28 work in February too.
@@ -120,7 +182,7 @@ steps:
 
 > 💳 Rent is due today — transfer before 18:00
 
-## 6. Get told when your site is down
+## 8. Get told when your site is down
 
 Find out from a Telegram message, not from your users. `fail_on_status: false`
 records the response instead of failing the step, so the alert condition can
@@ -148,7 +210,7 @@ steps:
 
 > 🚨 https://your-site.example is down — returned 503
 
-## 7. Know when a project ships a new release
+## 9. Know when a project ships a new release
 
 GitHub publishes an Atom feed for every repo's releases — no API key needed.
 Each release becomes one message with the version and link.
@@ -169,7 +231,7 @@ steps:
 
 > 🚀 New release in spring-projects/spring-boot: v3.5.14 — https://github.com/…
 
-## 8. Follow a feed in Telegram
+## 10. Follow a feed in Telegram
 
 Any news feed, blog or podcast with RSS lands in your chat — one message per
 new item. Items are deduplicated by guid/link in the database, so restarts
@@ -190,7 +252,7 @@ steps:
 > 📰 Show HN: Potok — workflow engine without a broker
 > https://news.ycombinator.com/item?id=…
 
-## 9. Know the moment a page changes
+## 11. Know the moment a page changes
 
 Sold-out product, closed registration, "no slots available" — point a css
 selector at the one spot that says so. The page can be full of timestamps and
@@ -215,7 +277,7 @@ steps:
 
 > 👀 The page changed: In stock — https://shop.example.com/product/123
 
-## 10. Buy euros when they're cheap
+## 12. Buy euros when they're cheap
 
 The Polish central bank publishes the official mid rate daily, as free JSON.
 Edge-triggered: one alert when the rate dips under your threshold, no repeats
@@ -239,7 +301,7 @@ steps:
 
 > 💶 EUR is at 4.1850 — below your 4.20 threshold, good time to exchange
 
-## 11. Renew certificates before they expire
+## 13. Renew certificates before they expire
 
 An expired certificate takes your site down with a scary browser warning — and
 it always happens on a weekend. The `ssl_check` handler reads the served
@@ -267,7 +329,7 @@ steps:
 
 > 🔒 Certificate for example.com expires in 13 days (2026-06-25T12:00:00Z)
 
-## 12. See repo pushes in Telegram (signed webhook)
+## 14. See repo pushes in Telegram (signed webhook)
 
 Every push becomes a chat message: who pushed and what. The webhook is
 HMAC-verified (GitHub's X-Hub-Signature-256 over the raw body), so nobody can
@@ -290,7 +352,7 @@ steps:
 
 > ⬆️ yura -> AntonovYuriy/Potok: fix: validate conditions at create time
 
-## 13. Remember to put the bins out (Warsaw)
+## 15. Remember to put the bins out (Warsaw)
 
 The schedule is a PDF on a city website and every fraction has its own day.
 This asks the official warszawa19115.pl API every morning and messages you

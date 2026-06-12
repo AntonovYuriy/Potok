@@ -33,7 +33,7 @@ curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
 
 ## Use cases
 
-Thirteen ready-to-use automations. Pick one in the dashboard (Help →
+Fifteen ready-to-use automations. Pick one in the dashboard (Help →
 Examples), fill a short form — URL, threshold, schedule — hit Preview ▶ to
 see what would happen right now, then Create. Full walkthroughs with sample
 messages: [docs/use-cases.md](docs/use-cases.md).
@@ -41,7 +41,9 @@ messages: [docs/use-cases.md](docs/use-cases.md).
 | Case | Trigger | File |
 |---|---|---|
 | Remind me on a schedule (hello-world) | cron | [simple-reminder.yaml](examples/simple-reminder.yaml) |
+| Remind me — and don't let it go | cron + durable `wait` | [follow-up-reminder.yaml](examples/follow-up-reminder.yaml) |
 | Watch a number from any API | poll + jsonpath, edge-triggered | [json-threshold.yaml](examples/json-threshold.yaml) |
+| Ask me before doing it (human-in-the-loop) | webhook + `approval` | [confirm-before-act.yaml](examples/confirm-before-act.yaml) |
 | Get told when a page mentions something | poll + `contains()` | [keyword-on-page.yaml](examples/keyword-on-page.yaml) |
 | Know when a price drops ("249,99 zł" parsed) | poll + css + `number: true` | [price-drop.yaml](examples/price-drop.yaml) |
 | Never miss a recurring payment | monthly cron | [monthly-payment-reminder.yaml](examples/monthly-payment-reminder.yaml) |
@@ -235,6 +237,32 @@ current: 249"), poll triggers get a plain-language line about when they
 actually fire, and nothing is persisted: no workflow, no execution, no poll
 state. Limits: 10s wall clock, 10 steps, single attempt per step.
 
+## Durable waits & approvals
+
+A step can pause without holding anything in memory:
+
+```yaml
+  - name: pause
+    wait: 3d            # durable sleep — a run_at timestamp in Postgres
+
+  - name: ask
+    action: approval     # human-in-the-loop
+    with:
+      text: "Deploy v2.3 to prod?"
+      timeout: 6h        # absent -> 24h; silence counts as "no"
+```
+
+`wait` re-parks the step's queue job at `now + duration` — restarts and
+deploys can't cancel it, because there is nothing running to kill. `approval`
+sends ONE Telegram message with two **one-time links** (only SHA-256 hashes
+are stored; `POTOK_PUBLIC_URL` controls the link host) and parks the same
+way until a click, a dashboard button, or the timeout. The decision becomes
+the step's output — `{approved, timed_out}` — and downstream steps branch on
+it with ordinary conditions: `if: "{{ steps.ask.approved == true }}"`.
+A timeout is a **result**, never a failure: nothing retries, nothing hits
+the DLQ. Waiting executions show up as a yellow WAITING badge in the
+dashboard, with Approve/Deny buttons right on the step.
+
 ## REST API
 
 | Method & path | Description |
@@ -274,6 +302,7 @@ Errors are RFC 7807 `application/problem+json`.
 | `POTOK_DLQ_TELEGRAM` | `false` | DLQ Telegram alerts |
 | `POTOK_ALLOW_PRIVATE_URLS` | `false` | disable the SSRF guard (see Security) |
 | `POTOK_PREVIEW_TIMEOUT` | `PT10S` | wall-clock budget for `/api/preview` |
+| `POTOK_PUBLIC_URL` | `http://localhost:8080` | base URL for approval links in Telegram |
 | `POTOK_LOG_JSON` | `false` | structured JSON logs |
 | `POTOK_TELEGRAM_API_BASE` | `https://api.telegram.org` | Bot API base (tests/self-hosted) |
 

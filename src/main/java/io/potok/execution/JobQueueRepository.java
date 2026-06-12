@@ -87,6 +87,26 @@ public class JobQueueRepository {
                 .update();
     }
 
+    /** Durable sleep: parks the job until {@code runAt} without touching the attempt counter. */
+    public void rescheduleTo(long jobId, Instant runAt) {
+        jdbc.sql("""
+                        update job_queue
+                        set locked_until = null, run_at = :runAt
+                        where id = :id
+                        """)
+                .param("id", jobId)
+                .param("runAt", OffsetDateTime.ofInstant(runAt, java.time.ZoneOffset.UTC))
+                .update();
+    }
+
+    /** Cancels a parked wake-up job (an approval was decided before its timeout fired). */
+    public void deleteByExecutionAndStep(UUID executionId, String stepName) {
+        jdbc.sql("delete from job_queue where execution_id = :executionId and step_name = :stepName")
+                .param("executionId", executionId)
+                .param("stepName", stepName)
+                .update();
+    }
+
     private static QueuedJob mapRow(ResultSet rs, int rowNum) throws SQLException {
         return new QueuedJob(
                 rs.getLong("id"),

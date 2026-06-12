@@ -70,6 +70,21 @@ public class StepExecutionRepository {
                 .update();
     }
 
+    /** Durable pause (wait / approval): upserts the row as WAITING; output carries what it waits for. */
+    public void markWaiting(UUID executionId, String stepName, Map<String, Object> output) {
+        jdbc.sql("""
+                        insert into step_execution (execution_id, step_name, status, output, started_at)
+                        values (:executionId, :stepName, 'WAITING', :output::jsonb, now())
+                        on conflict (execution_id, step_name) do update
+                        set status = 'WAITING', output = :output::jsonb,
+                            started_at = coalesce(step_execution.started_at, now())
+                        """)
+                .param("executionId", executionId)
+                .param("stepName", stepName)
+                .param("output", json.write(output))
+                .update();
+    }
+
     public void markSucceeded(UUID executionId, String stepName, Map<String, Object> output) {
         jdbc.sql("""
                         update step_execution

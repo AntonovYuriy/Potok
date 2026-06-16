@@ -16,15 +16,19 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Human-in-the-loop approvals. Asking sends ONE Telegram message with two
- * one-time links; deciding (link click, dashboard button, or timeout) marks
- * the step SUCCEEDED with {approved, timed_out} as its output and advances
- * the DAG — a timeout is a result, never a failure.
+ * inline BUTTONS — native callback buttons when the updates poller is on
+ * (default), URL buttons opening the one-time links otherwise. Deciding
+ * (button tap, link, dashboard, or timeout) marks the step SUCCEEDED with
+ * {approved, timed_out} as its output and advances the DAG — a timeout is a
+ * result, never a failure. After a decision the message is edited best-effort:
+ * buttons disappear, the result line appears.
  *
  * Defaults (backward-compat rule): only 'text' is required; timeout absent
  * → 24h, channel absent → telegram, chat_id absent → TELEGRAM_CHAT_ID.
@@ -44,6 +48,7 @@ public class ApprovalService {
     private final ExecutionAdvancer advancer;
     private final TelegramClient telegram;
     private final String publicUrl;
+    private final boolean callbackButtons;
 
     public ApprovalService(ApprovalRepository approvals,
                            StepExecutionRepository steps,
@@ -51,7 +56,8 @@ public class ApprovalService {
                            JobQueueRepository jobQueue,
                            ExecutionAdvancer advancer,
                            TelegramClient telegram,
-                           @Value("${potok.public-url:http://localhost:8080}") String publicUrl) {
+                           @Value("${potok.public-url:http://localhost:8080}") String publicUrl,
+                           @Value("${potok.telegram.poll-updates:true}") boolean callbackButtons) {
         this.approvals = approvals;
         this.steps = steps;
         this.executions = executions;
@@ -59,6 +65,7 @@ public class ApprovalService {
         this.advancer = advancer;
         this.telegram = telegram;
         this.publicUrl = publicUrl.endsWith("/") ? publicUrl.substring(0, publicUrl.length() - 1) : publicUrl;
+        this.callbackButtons = callbackButtons;
     }
 
     /**
@@ -88,17 +95,46 @@ public class ApprovalService {
         approvals.upsert(executionId, stepName, workflowName,
                 sha256Hex(approveToken), sha256Hex(denyToken), expiresAt);
 
-        String message = text
-                + "\n\n✅ Approve: " + publicUrl + "/hooks/approval/" + approveToken
-                + "\n❌ Deny: " + publicUrl + "/hooks/approval/" + denyToken
-                + "\n⏳ Expires in " + humanDuration(timeout);
-        HttpResponse<String> response = telegram.sendMessage(chatId, message);
+        String message = text + "\n⏳ Expires in " + humanDuration(timeout);
+        // callback buttons answer right in the chat (needs the updates poller);
+        // with the poller off the buttons open the one-time links instead
+        List<List<Map<String, Object>>> keyboard = List.of(List.of(
+                callbackButtons
+                        ? Map.of("text", "✅ Approve", "callback_data", "apr:" + approveToken)
+                        : Map.of("text", "✅ Approve", "url", publicUrl + "/hooks/approval/" + approveToken),
+                callbackButtons
+                        ? Map.of("text", "❌ Deny", "callback_data", "dny:" + denyToken)
+                        : Map.of("text", "❌ Deny", "url", publicUrl + "/hooks/approval/" + denyToken)));
+        HttpResponse<String> response = telegram.sendMessageWithButtons(chatId, message, keyboard);
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException("telegram sendMessage returned status "
                     + response.statusCode() + ": " + response.body());
         }
+        approvals.find(executionId, stepName).ifPresent(approval ->
+                approvals.attachMessage(approval.id(), chatId,
+                        telegram.parseMessageId(response.body()), text));
         log.info("approval_asked executionId={} step={} expiresAt={}", executionId, stepName, expiresAt);
         return expiresAt;
+    }
+
+    /**
+     * Best-effort: rewrite the question message so the buttons disappear and
+     * the outcome shows. Never fails the decision — telegram may be down.
+     */
+    public void reflectDecisionInChat(UUID approvalId, String resultLine) {
+        approvals.findById(approvalId).ifPresent(approval -> {
+            if (approval.chatId() == null || approval.messageId() == null) {
+                return;
+            }
+            String question = approval.question() == null ? "" : approval.question();
+            try {
+                telegram.editMessageText(approval.chatId(), approval.messageId(),
+                        question + "\n\n" + resultLine);
+            } catch (Exception e) {
+                log.warn("approval_edit_failed approvalId={} error={}",
+                        approvalId, io.potok.common.Errors.describe(e));
+            }
+        });
     }
 
     public enum Status { DECIDED, ALREADY_DECIDED, EXPIRED, UNKNOWN }
@@ -162,7 +198,7 @@ public class ApprovalService {
     }
 
     private static String newToken() {
-        byte[] bytes = new byte[32];
+        byte[] bytes = new byte[16]; // 32 hex chars — fits callback_data (64-byte cap) with the apr:/dny: prefix
         RANDOM.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
     }

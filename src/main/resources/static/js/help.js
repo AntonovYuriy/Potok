@@ -4,6 +4,7 @@
 // from the same templates/ directory that feeds examples/ and the docs.
 import { apiYaml } from './api.js';
 import { runPreview } from './preview.js';
+import { renderMarkdown } from './markdown.js';
 
 const view = () => document.getElementById('view');
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -55,11 +56,14 @@ export async function helpView() {
         await renderShell('examples');
         return useForm(sub.slice(0, -'/use'.length));
     }
-    if (sub && sub !== 'reference') {
+    if (sub === 'reference' || sub === 'connect') {
+        return renderShell(sub);
+    }
+    if (sub) {
         await renderShell('examples');
         return caseDetail(sub);
     }
-    return renderShell(sub === 'reference' ? 'reference' : 'examples');
+    return renderShell('examples');
 }
 
 async function renderShell(tab) {
@@ -68,20 +72,26 @@ async function renderShell(tab) {
         <div class="toolbar">
             <button id="tab-examples" class="${tab === 'examples' ? 'tab-active' : ''}">Examples</button>
             <button id="tab-reference" class="${tab === 'reference' ? 'tab-active' : ''}">YAML reference</button>
+            <button id="tab-connect" class="${tab === 'connect' ? 'tab-active' : ''}">Connect &amp; API</button>
         </div>
         <div id="help-body"></div>`;
     document.getElementById('tab-examples').onclick = () => { location.hash = '#/help'; };
     document.getElementById('tab-reference').onclick = () => { location.hash = '#/help/reference'; };
+    document.getElementById('tab-connect').onclick = () => { location.hash = '#/help/connect'; };
     if (tab === 'examples') {
         await renderExamples();
-    } else {
+    } else if (tab === 'reference') {
         await renderReference();
+    } else {
+        await renderConnect();
     }
 }
 
 async function renderExamples() {
     const templates = await loadTemplates();
     document.getElementById('help-body').innerHTML = `
+        <p class="muted">Integrating another program with this Potok instance?
+            See <a href="#/help/connect">Connect &amp; API</a> for webhooks, signed deliveries, and the REST endpoints.</p>
         <div class="cards">${templates.map(t => `
             <div class="case-card" data-case="${t.id}">
                 <h3>${esc(t.title)}</h3>
@@ -209,6 +219,13 @@ async function useForm(id) {
         sessionStorage.setItem('potok-import-template', renderTemplate(tpl, collect()));
         location.hash = '#/new';
     };
+}
+
+async function renderConnect() {
+    const source = await fetch('/help/connect.md').then(r => r.text());
+    const base = location.origin || '';
+    document.getElementById('help-body').innerHTML = `
+        <div class="card markdown-doc">${renderMarkdown(source.replaceAll('{base}', base))}</div>`;
 }
 
 async function renderReference() {

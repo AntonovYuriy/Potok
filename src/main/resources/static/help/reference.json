@@ -95,7 +95,7 @@
     {
       "name": "approval",
       "params": "text (required), timeout (default 24h), chat_id (default ${TELEGRAM_CHAT_ID})",
-      "output": "{approved, timed_out, decided_at} — one Telegram message with one-time approve/deny links; timeout is a result, not a failure"
+      "output": "{approved, timed_out, decided_at} — one Telegram message with inline Approve/Deny buttons (tap answers in the chat; timeout is a result, not a failure)"
     }
   ]
 }

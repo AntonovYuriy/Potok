@@ -11,7 +11,10 @@ public record Approval(
         String workflowName,
         Instant expiresAt,
         Instant decidedAt,
-        String decision) {
+        String decision,
+        String chatId,
+        Long messageId,
+        String question) {
 
     public boolean isDecided() {
         return decidedAt != null;

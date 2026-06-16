@@ -68,6 +68,27 @@ public class ApprovalRepository {
                 .optional();
     }
 
+    /** Remembers which Telegram message carries the buttons so a decision can edit it. */
+    public void attachMessage(UUID id, String chatId, Long messageId, String question) {
+        jdbc.sql("""
+                        update approval
+                        set chat_id = :chatId, message_id = :messageId, question = :question
+                        where id = :id
+                        """)
+                .param("id", id)
+                .param("chatId", chatId)
+                .param("messageId", messageId)
+                .param("question", question)
+                .update();
+    }
+
+    public Optional<Approval> findById(UUID id) {
+        return jdbc.sql("select * from approval where id = :id")
+                .param("id", id)
+                .query(rowMapper)
+                .optional();
+    }
+
     /** One-time use: only flips an undecided row. @return true when THIS call decided it. */
     public boolean decide(UUID id, String decision) {
         return jdbc.sql("""
@@ -85,6 +106,8 @@ public class ApprovalRepository {
 
     private static Approval mapRow(ResultSet rs, int rowNum) throws SQLException {
         OffsetDateTime decidedAt = rs.getObject("decided_at", OffsetDateTime.class);
+        long rawMessageId = rs.getLong("message_id");
+        Long messageId = rs.wasNull() ? null : rawMessageId;
         return new Approval(
                 rs.getObject("id", UUID.class),
                 rs.getObject("execution_id", UUID.class),
@@ -92,6 +115,9 @@ public class ApprovalRepository {
                 rs.getString("workflow_name"),
                 rs.getObject("expires_at", OffsetDateTime.class).toInstant(),
                 decidedAt == null ? null : decidedAt.toInstant(),
-                rs.getString("decision"));
+                rs.getString("decision"),
+                rs.getString("chat_id"),
+                messageId,
+                rs.getString("question"));
     }
 }

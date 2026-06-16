@@ -25,6 +25,10 @@ public class ApprovalController {
     @GetMapping(value = "/hooks/approval/{token}", produces = MediaType.TEXT_HTML_VALUE)
     public ResponseEntity<String> decide(@PathVariable String token) {
         Outcome outcome = approvalService.decideByToken(token);
+        if (outcome.status() == ApprovalService.Status.DECIDED) {
+            approvalService.reflectDecisionInChat(outcome.approval().id(),
+                    outcome.approved() ? "✅ Approved" : "❌ Denied");
+        }
         return switch (outcome.status()) {
             case DECIDED -> ResponseEntity.ok(page(outcome.approved()
                     ? "✅ Approved"

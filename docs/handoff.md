@@ -1,8 +1,14 @@
 # Handoff
 
-_Last updated: 2026-06-12 (M6.1 done)._
+_Last updated: 2026-06-16 (integration docs done)._
 
 ## Current state
+
+- **Integration docs done — "Connect & API" tab** (2026-06-16, PR #16, squash `1199cd3`, 201 tests):
+  - New third Help tab (`#/help/connect`) plus mirror at `docs/integration.md`; both render the same source asset `src/main/resources/static/help/connect.md` — a `HelpIntegrationDocsTest` byte-compares the two, so the GitHub-rendered doc cannot silently drift from the dashboard view. Tiny vanilla-JS markdown renderer (`static/js/markdown.js`) supports headings/lists/GFM tables/fenced code/links — no build step added.
+  - Two clearly separated sections, both verified against the running code: **A. Trigger Potok from your app** — `POST /hooks/{path}` unsigned + signed (GitHub-compatible `X-Hub-Signature-256`, bash/Python/Node snippets, repo-webhook wiring) with the explicit "hooks are not behind X-API-Key" callout; **B. Control Potok via REST API** — `X-API-Key` model (root vs `api_token`, constant-time), full endpoint reference table with auth levels, Content-Type rules for raw-YAML routes, end-to-end `mint token → create workflow → run → poll → revoke` walkthrough, RFC 7807 error shapes, real limits (`POTOK_PREVIEW_TIMEOUT`, MAX_STEPS=10, page caps). README gains an "Integrate / API" section pointing at `docs/integration.md`.
+  - Same test asserts auth reality matches the doc: `/api/meta`, `/hooks/**`, `/actuator/health`, the asset itself stay key-free under `POTOK_API_KEY`; documented `/api/**` paths return 401 problem+json without the header. 4/4 new tests; 201 total green.
+  - Live-verified (compose, real key + HMAC secret): unsigned hook → 401 "missing or invalid X-Hub-Signature-256 signature"; wrong sig → 401; `openssl dgst -sha256 -hmac` over the raw body → 202 with `PENDING`. Walkthrough curl block executed end-to-end: token mint (plaintext shown once) → workflow create → manual run → poll PENDING→SUCCEEDED → revoke 204 → next call 401.
 
 - **M6.1 done — durable waits + human-in-the-loop approvals** (2026-06-12, PR #14, squash `431745b`, 195 tests):
   - `wait: <duration>` step field: durable sleep via job_queue.run_at reschedule (no action/with, never retried); durations gain `d` units everywhere (parser + form validator). `action: approval`: ONE telegram message with two one-time links (`GET /hooks/approval/<token>`, public — token is the credential; SHA-256 hashes only in new `approval` table, Flyway V9), step parks WAITING, worker released. Decision (click / dashboard Approve-Deny buttons / `POST /api/executions/{id}/steps/{step}/decide` / timeout) → step SUCCEEDED with `{approved, timed_out, decided_at}`; downstream branches via ordinary `if:`. **Timeout = result, never failure** (no retry/DLQ); telegram send failure = normal retry semantics. `POTOK_PUBLIC_URL` (default localhost:8080) controls link host.

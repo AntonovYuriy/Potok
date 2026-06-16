@@ -287,6 +287,18 @@ dashboard, with Approve/Deny buttons right on the step.
 
 Errors are RFC 7807 `application/problem+json`.
 
+## Integrate / API
+
+If you're wiring another program to fire workflows or to manage them from
+outside the dashboard, the developer-facing reference lives in
+[docs/integration.md](docs/integration.md) and is rendered in the dashboard
+under **Help → Connect & API** (`#/help/connect`). It covers the webhook
+contract (`POST /hooks/{path}`, GitHub-compatible `X-Hub-Signature-256` HMAC
+with bash / Python / Node snippets), the REST endpoint table, an
+end-to-end token → workflow → run → poll walkthrough, error shapes, and the
+limits that actually exist. Both surfaces serve the same Markdown asset, so
+they cannot drift.
+
 ## Configuration (environment variables)
 
 | Variable | Default | Purpose |

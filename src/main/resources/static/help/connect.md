@@ -28,6 +28,7 @@ steps:
   - name: notify
     action: telegram
     with:
+      chat_id: "${TELEGRAM_CHAT_ID}"        # or: to: approved (broadcast to APPROVED recipients)
       text: "Got event from {{ trigger.body.repository.full_name }}"
 ```
 

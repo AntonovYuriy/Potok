@@ -125,7 +125,10 @@ steps:                             # a DAG; without `needs` steps run in file or
     if: "{{ steps.fetch.status == 200 && exists(steps.fetch.body.message) }}"
     action: telegram
     with:
+      # exactly one address: chat_id | to_recipient | to
       chat_id: "${TELEGRAM_CHAT_ID}"          # ${VAR} = environment variable
+      # to_recipient: "Alice"                  # one approved recipient by name or id
+      # to: "approved"                         # fan out to every APPROVED recipient
       text: "Result: {{ steps.fetch.body.message }}"
 ```
 
@@ -267,6 +270,53 @@ A timeout is a **result**, never a failure: nothing retries, nothing hits
 the DLQ. Waiting executions show up as a yellow WAITING badge in the
 dashboard, with Approve/Deny buttons right on the step.
 
+## Telegram recipients
+
+Telegram routing has a directory: every chat that messages the bot is upserted
+into `telegram_recipient` so workflows can address a person without hardcoding
+chat ids. **Recipients receive bot messages; they do NOT gain access to
+Potok.** The API and dashboard always stay behind `X-API-Key` / `api_token` —
+talking to the bot can never grant control.
+
+- `/start` registers the chat: PENDING (default) or APPROVED if
+  `telegram_auto_approve` is on. `/stop` self-revokes. `/status` reports state.
+- Recipients dashboard page lists everyone with Approve / Revoke / Re-approve /
+  Delete actions and shows a Pending badge in the nav. The auto-approve toggle
+  lives at the top of the same page (and on `PATCH /api/settings`).
+- Telegram steps gain two additive addressing keys (the existing `chat_id`
+  path is unchanged):
+
+  ```yaml
+    - name: notify
+      action: telegram
+      with:
+        to: approved            # fan-out to every APPROVED recipient
+        text: "Build #{{ trigger.build.number }} green"
+  ```
+
+  or one specific person:
+
+  ```yaml
+    - name: ping_alice
+      action: telegram
+      with:
+        to_recipient: "Alice"   # uuid or display name
+        text: "Your call"
+  ```
+
+  Only APPROVED recipients receive — PENDING/REVOKED are silently skipped even
+  if referenced. A broadcast step's output reports `sent_count`,
+  `total_recipients`, and per-recipient failures; the step fails only if every
+  send fails.
+- The bot reads incoming messages via a single-instance `getUpdates`
+  long-poller, guarded by a Postgres advisory lock so replicas don't race.
+  Disable with `POTOK_TELEGRAM_POLL_UPDATES=false` (which also keeps approvals
+  on URL buttons).
+- **Auto-approve is OFF by default** because the bot's chat is discoverable:
+  anyone who finds it would otherwise be subscribed automatically. Leave OFF
+  and approve people deliberately in the dashboard, OR turn ON only for
+  trusted, private bots.
+
 ## REST API
 
 | Method & path | Description |
@@ -282,6 +332,8 @@ dashboard, with Approve/Deny buttons right on the step.
 | `GET /api/executions?workflowId=&page=&size=` · `GET /{id}` | history / step detail |
 | `GET /api/dlq` · `POST /api/dlq/{id}/requeue` · `DELETE /api/dlq/{id}` | dead letters |
 | `POST /api/tokens` · `GET /api/tokens` · `DELETE /api/tokens/{id}` | token management |
+| `GET /api/recipients?status=&page=&size=` · `POST /{id}/approve` · `POST /{id}/revoke` · `DELETE /{id}` | telegram recipient directory |
+| `GET /api/settings` · `PATCH /api/settings` | server-wide settings (today: `telegram_auto_approve`) |
 | `POST /api/admin/purge` | run retention now (root key only) |
 | `GET /api/meta` | public: app name, authRequired |
 
@@ -319,7 +371,7 @@ they cannot drift.
 | `POTOK_ALLOW_PRIVATE_URLS` | `false` | disable the SSRF guard (see Security) |
 | `POTOK_PREVIEW_TIMEOUT` | `PT10S` | wall-clock budget for `/api/preview` |
 | `POTOK_PUBLIC_URL` | `http://localhost:8080` | base URL for approval links in Telegram |
-| `POTOK_TELEGRAM_POLL_UPDATES` | `true` | native button taps via getUpdates; `false` = URL buttons |
+| `POTOK_TELEGRAM_POLL_UPDATES` | `true` | native button taps + recipient ingest via getUpdates; `false` = URL buttons, no auto recipient registration |
 | `POTOK_LOG_JSON` | `false` | structured JSON logs |
 | `POTOK_TELEGRAM_API_BASE` | `https://api.telegram.org` | Bot API base (tests/self-hosted) |
 

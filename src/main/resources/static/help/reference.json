@@ -79,8 +79,8 @@
     },
     {
       "name": "telegram",
-      "params": "chat_id, text",
-      "output": "{status, chat_id}; requires TELEGRAM_BOT_TOKEN env"
+      "params": "text (required); ONE of: chat_id | to_recipient (uuid or display name) | to: approved (broadcast to every APPROVED recipient)",
+      "output": "{status, chat_id, sent_count} for a single send; {sent_count, total_recipients, failed_count, failures} for a broadcast. PENDING/REVOKED recipients never receive. Requires TELEGRAM_BOT_TOKEN env."
     },
     {
       "name": "warsaw_waste",

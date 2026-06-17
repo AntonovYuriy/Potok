@@ -1,8 +1,17 @@
 # Handoff
 
-_Last updated: 2026-06-16 (integration docs done)._
+_Last updated: 2026-06-17 (M6 done)._
 
 ## Current state
+
+- **M6 done — Telegram recipient directory + per-chat approvals** (2026-06-17, PR #17, squash `6e7a008`, 229 tests):
+  - **Scope clarified in code AND docs**: the recipient directory governs WHO RECEIVES bot messages. It grants NO Potok control-plane access — `/api/**` stays behind `X-API-Key`/`api_token` always. README "Telegram recipients" section + the Recipients dashboard page both say this explicitly.
+  - New `telegram_recipient` + `setting` tables (Flyway V11). `RecipientService` runs the PENDING/APPROVED/REVOKED state machine and the bot reply logic (centralised + unit-tested); first contact lands PENDING by default, APPROVED when `telegram_auto_approve` is on. **Default OFF** — leaving it off avoids the "bot is discoverable → anyone is subscribed" failure mode.
+  - `TelegramUpdatesPoller` now consumes `message` updates as well as `callback_query`. Single-consumer guarantee via a session-scoped Postgres advisory lock on a dedicated JDBC connection (`TelegramPollLock`) so replicas don't race the in-memory offset; existing 409-from-getUpdates fallback unchanged. Bot replies to `/start`, `/stop`, `/status` and stays silent for plain text from approved chats. `POTOK_TELEGRAM_POLL_UPDATES=false` continues to switch approval buttons to URL mode AND also stops new-recipient auto-registration (documented).
+  - REST: `GET /api/recipients` (paged, `status=` filter, returns masked chat ids), `POST /api/recipients/{id}/approve|revoke`, `DELETE /api/recipients/{id}`, `GET/PATCH /api/settings { telegram_auto_approve }`. All token-authed like the rest of `/api/**`.
+  - Dashboard: new "Recipients" nav item with a pending-count badge; page has status filters (All/Pending/Approved/Revoked), per-row Approve / Re-approve / Revoke / Delete, and the auto-approve toggle at the top with the trust trade-off spelled out. Auto-refresh consistent with Workflows/DLQ (7s).
+  - `telegram` action: backward-compatible new addressing. `chat_id: ...` unchanged (M1 examples keep working — covered by `chatIdPathStillWorksUnchanged` test). `to_recipient: <uuid|display-name>` sends to one APPROVED recipient (PENDING/REVOKED never receive even if referenced). `to: approved` fans out to every APPROVED recipient — per-recipient send, output `{sent_count, total_recipients, failed_count, failures}`, step fails only when EVERY send fails. Empty broadcast is not a failure (just `sent_count=0`).
+  - Tests: 28 new (229 total). `RecipientServiceTest` pins the state machine, auto-approve routing, and `/start`/`/stop`/`/status`/silent-returning-chat reply rules. `TelegramActionHandlerTest` covers all three addressing keys, ambiguous-combo rejection, fan-out, partial-failure, all-fail. `RecipientsIntegrationTest` is the end-to-end wiring on a real Postgres: PENDING vs APPROVED on first contact based on the toggle, approve/revoke flow via REST, broadcast that hits ONLY approved (PENDING + REVOKED chats verified absent in the WireMock sendMessage bodies), backward-compat `chat_id` path. The integration test sets `potok.telegram.poll-updates=false` and drives bot messages through `RecipientService.handleBotMessage` directly — the poller's getUpdates wiring stays covered by the existing `TelegramButtonsIntegrationTest`.
 
 - **Integration docs done — "Connect & API" tab** (2026-06-16, PR #16, squash `1199cd3`, 201 tests):
   - New third Help tab (`#/help/connect`) plus mirror at `docs/integration.md`; both render the same source asset `src/main/resources/static/help/connect.md` — a `HelpIntegrationDocsTest` byte-compares the two, so the GitHub-rendered doc cannot silently drift from the dashboard view. Tiny vanilla-JS markdown renderer (`static/js/markdown.js`) supports headings/lists/GFM tables/fenced code/links — no build step added.
@@ -100,6 +109,9 @@ _Last updated: 2026-06-16 (integration docs done)._
 
 ## Known issues / gaps
 
+- Recipients have no per-workflow subscription topics yet — `to: approved` is one undifferentiated audience. The next milestone candidate is `/subscribe <workflow>` (a recipient picks which workflows they want) and a matching `to: subscribers` addressing.
+- The bot updates poller offset is in-memory; after a restart Telegram re-delivers a small batch — recipient upsert is idempotent and approval decide() is one-time, so the worst case is one extra "you're subscribed" reply per re-delivered `/start`. Persisting the offset would remove even that.
+- No CLI/REST path to add a recipient WITHOUT the chat first messaging the bot (operator can't pre-seed a chat id from outside). Adds easily but not in M6.
 - Approval channel is telegram-only (channel param validated, but no other senders yet — B3 action pack would unlock email/slack).
 - No "cancel execution" API: a WAITING approval can only be decided or left to expire; an unwanted parked wait runs to completion.
 - `wait` duration is unbounded — a typo like `wait: 300d` parks a job for a year with no admin override (cancel API would solve both).
@@ -129,7 +141,23 @@ _Last updated: 2026-06-16 (integration docs done)._
 
 ## Next action
 
-**First deploy to Koyeb + Neon per docs/deploy.md — manual, by owner** (accounts, secrets, clicking). Set `POTOK_API_KEY`; create per-client tokens after boot; use `hmac_secret_env` for public webhooks.
+**Live verify M6 with a real second Telegram account** (owner step, needs 2 phones / accounts):
+1. `docker compose up -d` with `TELEGRAM_BOT_TOKEN` set; auto-approve OFF (the default).
+2. Message the bot `/start` from the second account → check the Recipients page shows it as PENDING with a `…last 4 of chat id` mask and the display name.
+3. Click Approve → status flips to APPROVED.
+4. Create a workflow:
+   ```yaml
+   name: m6-live
+   trigger: { webhook: { path: "m6-live" } }
+   steps:
+     - name: notify
+       action: telegram
+       with: { to: approved, text: "M6 broadcast — hi" }
+   ```
+5. Run it → both your own chat (if approved) and the second account get the message; PENDING/REVOKED chats stay silent.
+6. Revoke the second account → run again → second account no longer receives.
+
+Then: **First deploy to Koyeb + Neon per docs/deploy.md — manual, by owner** (accounts, secrets, clicking). Set `POTOK_API_KEY`; create per-client tokens after boot; use `hmac_secret_env` for public webhooks.
 
 ## M5 ideas
 

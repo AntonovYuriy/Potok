@@ -43,8 +43,11 @@ export async function workflowList() {
 
     const rows = workflows.map((w, i) => {
         const last = lastRuns[i];
+        const subBadge = w.subscribable
+            ? ` <span class="status enabled" title="recipients can subscribe to this workflow via the bot">📋 subscribable</span>`
+            : '';
         return `<tr>
-            <td><a href="#/wf/${w.id}">${esc(w.name)}</a></td>
+            <td><a href="#/wf/${w.id}">${esc(w.name)}</a>${subBadge}</td>
             <td>${triggerKind(w.definition)}</td>
             <td><span class="status ${w.enabled ? 'enabled' : 'disabled'}">${w.enabled ? 'enabled' : 'disabled'}</span></td>
             <td>${last ? `<a href="#/exec/${last.id}">${statusBadge(last.status)}</a> <span class="muted">${fmtTime(last.createdAt)}</span>` : '<span class="muted">never</span>'}</td>
@@ -79,6 +82,9 @@ export async function workflowDetail(id, page = 0) {
         api(`/api/executions?workflowId=${id}&page=${page}&size=20`),
         api(`/api/workflows/${id}/versions?size=20`),
     ]);
+    const subscribers = workflow.subscribable
+        ? await api(`/api/workflows/${id}/subscribers`).catch(() => ({ items: [], total: 0 }))
+        : { items: [], total: 0 };
 
     const rows = executions.map(e => `<tr>
         <td><a href="#/exec/${e.id}" class="mono">${e.id.slice(0, 8)}</a></td>
@@ -96,6 +102,23 @@ export async function workflowDetail(id, page = 0) {
             <button id="run-btn" ${workflow.enabled ? '' : 'disabled'}>Run now</button>
             <a class="btn" href="#/wf/${id}/edit">Edit</a>
             <span class="muted">${triggerKind(workflow.definition)} · v${workflow.currentVersion}</span>
+        </div>
+        <div class="card">
+            <h2 class="muted">Subscriptions</h2>
+            <label style="display:flex; gap:0.5rem; align-items:center; cursor:pointer">
+                <input type="checkbox" id="subscribable-toggle" ${workflow.subscribable ? 'checked' : ''}>
+                <span><strong>Offer this workflow in the bot's /subscriptions menu</strong>
+                    <span class="muted">— approved recipients can opt in to receive its notifications.
+                    Pair with <code>to: subscribers</code> in a telegram step. Default off so nothing leaks.</span>
+                </span>
+            </label>
+            ${workflow.subscribable
+                ? (subscribers.total === 0
+                    ? `<div class="empty">No subscribers yet — share the bot and ask people to message /subscriptions.</div>`
+                    : `<ul class="muted" style="margin:0.5rem 0 0 1rem">
+                        ${subscribers.items.map(s => `<li>${esc(s.displayName)} <span class="mono">${esc(s.chatIdMasked)}</span></li>`).join('')}
+                       </ul>`)
+                : ''}
         </div>
         <div class="card"><h2 class="muted">Definition <span class="muted">v${workflow.currentVersion}</span></h2><pre class="yaml">${esc(workflow.yamlSource)}</pre></div>
         <div class="card">
@@ -123,6 +146,19 @@ export async function workflowDetail(id, page = 0) {
             <button id="next" ${executions.length < 20 ? 'disabled' : ''}>older →</button>
         </div>`;
 
+    document.getElementById('subscribable-toggle').onchange = async e => {
+        try {
+            await api(`/api/workflows/${id}/subscribable`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscribable: e.target.checked }),
+            });
+            workflowDetail(id, page);
+        } catch (err) {
+            flash(err.message);
+            e.target.checked = !e.target.checked;
+        }
+    };
     document.getElementById('run-btn').onclick = async () => {
         try {
             const r = await api(`/api/workflows/${id}/run`, { method: 'POST' });

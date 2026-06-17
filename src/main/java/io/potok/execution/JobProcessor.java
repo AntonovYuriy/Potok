@@ -173,7 +173,8 @@ public class JobProcessor {
 
         Instant startedAt = Instant.now();
         StepResult result = executeSafely(handler,
-                new StepContext(execution.id(), workflow.name(), step.name(), input, attempt));
+                new StepContext(workflow.id(), execution.id(), workflow.name(),
+                        step.name(), input, attempt));
         metrics.stepExecuted(step.action(), Duration.between(startedAt, Instant.now()), result.success());
 
         if (result.success()) {

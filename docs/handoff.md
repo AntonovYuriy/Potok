@@ -1,8 +1,17 @@
 # Handoff
 
-_Last updated: 2026-06-17 (M6.1 audit follow-ups done)._
+_Last updated: 2026-06-17 (M7 done)._
 
 ## Current state
+
+- **M7 done — per-workflow Telegram subscriptions (dynamic menu)** (2026-06-17, 255 tests):
+  - **Subscribable workflows + dynamic menu.** `workflow.subscribable` (new column via Flyway V12, default FALSE) opts a workflow into the per-recipient menu. Settable from YAML (`subscribable: true` at the top level) and toggled from the workflow dashboard page (PATCH endpoint — does NOT bump version, since the flag changes no execution semantics). `workflow_subscription(workflow_id, recipient_id)` is the natural key; both FKs cascade so deleting a recipient or workflow tidies itself; revoking a recipient leaves the rows but every read joins on `r.status='APPROVED'` so non-active chats are invisible.
+  - **Bot menu.** `/subscriptions` from an APPROVED chat renders one inline-keyboard message: `✅ Name` for subscribed, `⬜ Name` for not, in workflow-name order, one row per `subscribable AND enabled` workflow. Tap → `SubscriptionService.toggle` flips the row and `editMessageText` redraws the keyboard with new check-marks on the same message (no chat spam). PENDING get a "waiting for approval" text; REVOKED get the "access revoked" text — same wording family as the M6 flows. The callback handler re-checks the caller's APPROVED status before toggling — defence in depth against stale buttons.
+  - **Delivery.** `telegram` action gains `to: subscribers`: per-workflow fan-out, output `{sent_count, total_recipients, failed_count, failures, audience}` with `audience = "approved subscribers"`. Step succeeds with `sent_count = 0` when nobody's subscribed (intended — publish before anyone subscribes is fine). `StepContext` now carries `workflowId` so the action can read the running workflow id; preview/poller call sites get a null workflow id (preview-time `to: subscribers` fails fast with a clear error rather than secretly sending). `to: approved`, `to_recipient`, and `chat_id` are unchanged.
+  - **REST + dashboard.** `PATCH /api/workflows/{id}/subscribable` (body `{ "subscribable": bool }`) flips the flag without versioning. `GET /api/workflows/{id}/subscribers` returns APPROVED subscribers only (masked chat ids, display names). Workflow list page badges subscribable workflows; detail page has the toggle and a subscribers list (with empty-state hint pointing at `/subscriptions`).
+  - **Security note.** The directory + menu still grant ZERO Potok access — `/api/**` stays behind `X-API-Key`/`api_token`. A chat can never gain control of Potok by tapping a button.
+  - **Tests: 19 new (255 total).** `SubscriptionServiceTest` (unit, Mockito): toggle add/remove, PENDING/REVOKED rejection, non-subscribable + disabled friendly no-op, menu builder check-mark painting + empty publish set, `listApprovedSubscribers` delegation. `SubscriptionsIntegrationTest` (Postgres + WireMock): YAML `subscribable` round-trip, `buildMenu` lists only `subscribable+enabled`, toggle redraws checkmarks, PENDING tap is rejected, `to: subscribers` fans out to ONLY subscribed APPROVED chats (3 approved → 2 subscribed → exactly 2 sends to those chats), zero-subscriber broadcast is success with `sent_count=0`, revoking a recipient drops them from the subscribers list without deleting the row, deleting a recipient cascades the subscription rows, PATCH flip preserves `currentVersion`, `GET .../subscribers` filters out revoked. All prior suites green.
+  - Live verify hook unchanged: real bot + second account flow in the Next-action block.
 
 - **M6.1 audit follow-ups done — wording + test-coverage + flake guard** (2026-06-17, PR #18, squash `19d1dc1`, 236 tests):
   - **`to_recipient` wording aligned with the fail-loud behavior.** Behavior is unchanged — a `telegram` step targeting a non-APPROVED recipient by id/name fails the step with a clear error (`no approved recipient matches 'to_recipient': X (PENDING or REVOKED recipients never receive)`). README "Telegram recipients", `help/reference.json`, and the new integration test `toRecipientTargetingPendingFailsTheStep` make this explicit. Rationale: a single named target is almost certainly a typo or stale config, not something to silently swallow; broadcasts (`to: approved`) still skip non-APPROVED quietly.
@@ -118,7 +127,10 @@ _Last updated: 2026-06-17 (M6.1 audit follow-ups done)._
 
 ## Known issues / gaps
 
-- Recipients have no per-workflow subscription topics yet — `to: approved` is one undifferentiated audience. The next milestone candidate is `/subscribe <workflow>` (a recipient picks which workflows they want) and a matching `to: subscribers` addressing.
+- Subscriptions are workflow-scoped only — there is no "subscribe by tag/category" or "filter by trigger payload" (e.g. only get prod deploys). Could be a category column on workflow + multi-select menu; would only be a couple more buttons in the same `/subscriptions` flow.
+- The `to: subscribers` audience is workflow-wide. A workflow that needs different telegram messages for different sub-audiences (e.g. "frontend devs only") still has to fan out manually or split into multiple workflows.
+- Menu redraw is best-effort — if `editMessageText` fails (Telegram outage, message older than 48h), the user sees a stale keyboard but the toggle did land. Next tap to `/subscriptions` re-renders from current state.
+- `/subscriptions` is the only way to subscribe right now. No REST `POST /api/recipients/{id}/subscriptions/{workflowId}` for tooling/owner-driven bulk subscribe. Adds easily but not in M7.
 - The bot updates poller offset is in-memory; after a restart Telegram re-delivers a small batch — recipient upsert is idempotent and approval decide() is one-time, so the worst case is one extra "you're subscribed" reply per re-delivered `/start`. Persisting the offset would remove even that.
 - No CLI/REST path to add a recipient WITHOUT the chat first messaging the bot (operator can't pre-seed a chat id from outside). Adds easily but not in M6.
 - Approval channel is telegram-only (channel param validated, but no other senders yet — B3 action pack would unlock email/slack).
@@ -150,23 +162,31 @@ _Last updated: 2026-06-17 (M6.1 audit follow-ups done)._
 
 ## Next action
 
-**Live verify M6 with a real second Telegram account** (owner step, needs 2 phones / accounts):
-1. `docker compose up -d` with `TELEGRAM_BOT_TOKEN` set; auto-approve OFF (the default).
-2. Message the bot `/start` from the second account → check the Recipients page shows it as PENDING with a `…last 4 of chat id` mask and the display name.
-3. Click Approve → status flips to APPROVED.
-4. Create a workflow:
+**Live verify M7 with a real second Telegram account** (owner step, needs 2 phones / accounts):
+1. `docker compose up -d` with `TELEGRAM_BOT_TOKEN` set; the second account already APPROVED from the M6 live verify (or repeat M6 step 1-3).
+2. Create a subscribable workflow:
    ```yaml
-   name: m6-live
-   trigger: { webhook: { path: "m6-live" } }
+   name: m7-live
+   subscribable: true
+   trigger: { webhook: { path: "m7-live" } }
    steps:
      - name: notify
        action: telegram
-       with: { to: approved, text: "M6 broadcast — hi" }
+       with: { to: subscribers, text: "M7 broadcast — hi" }
    ```
-5. Run it → both your own chat (if approved) and the second account get the message; PENDING/REVOKED chats stay silent.
-6. Revoke the second account → run again → second account no longer receives.
+3. From the second account, send `/subscriptions` to the bot. The menu must list `m7-live` with a `⬜`. Tap it → toast `Subscribed ✅`, the same message updates in place to show `✅ m7-live`.
+4. `curl -X POST localhost:8080/hooks/m7-live` → only the second (subscribed) account receives. Your own chat (approved but NOT subscribed) does not.
+5. Tap the row again to unsubscribe (`⬜` returns); re-fire the hook → no delivery.
+6. Toggle `subscribable: false` from the dashboard → the workflow vanishes from the next `/subscriptions` render.
 
 Then: **First deploy to Koyeb + Neon per docs/deploy.md — manual, by owner** (accounts, secrets, clicking). Set `POTOK_API_KEY`; create per-client tokens after boot; use `hmac_secret_env` for public webhooks.
+
+## M8 ideas
+1. Subscription categories/tags: `subscribe_groups: ["deploys", "errors"]` on workflow + recipient picks groups → fewer rows in the menu when the workflow set grows.
+2. REST sub management: `POST/DELETE /api/recipients/{id}/subscriptions/{workflowId}` for owner-driven bulk subscribe + audit log.
+3. Per-step retry of `to: subscribers` fan-out — currently a transient Telegram outage drops the message for that user. Could write the per-recipient send into the job queue.
+4. Subscription "digest mode": coalesce multiple workflow fires into one daily summary message instead of one message per fire.
+5. Wire the same dynamic menu to email/Slack channels once a B3-class action pack lands (the M6.1 approval channel param is already validated).
 
 ## M5 ideas
 

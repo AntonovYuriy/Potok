@@ -85,12 +85,14 @@ public class RecipientService {
         return switch (recipient.status()) {
             case APPROVED -> {
                 if (contact.justRegistered()) {
-                    yield Optional.of("✅ You're subscribed — you'll receive notifications "
-                            + "from the Potok workflows that send to approved recipients.\n"
-                            + "Send /stop to unsubscribe.");
+                    yield Optional.of("✅ You're approved — you'll receive notifications from the "
+                            + "Potok workflows that send to approved recipients.\n"
+                            + "Send /subscriptions to choose which specific workflows to follow, "
+                            + "or /stop to unsubscribe from everything.");
                 }
                 if (startCommand) {
-                    yield Optional.of("✅ Already subscribed. Send /stop to unsubscribe.");
+                    yield Optional.of("✅ Already approved. Send /subscriptions to manage workflow "
+                            + "subscriptions, or /stop to unsubscribe.");
                 }
                 yield Optional.empty();
             }
@@ -129,6 +131,11 @@ public class RecipientService {
 
     public Optional<Recipient> findApprovedByIdOrName(String idOrName) {
         return recipients.findApprovedByIdOrName(idOrName);
+    }
+
+    /** Used by the subscription callback to verify the tapping chat is still APPROVED. */
+    public Optional<Recipient> findByChatId(String chatId) {
+        return recipients.findByChatId(chatId);
     }
 
     private Recipient transition(UUID id, Status target, Status... allowedFrom) {

@@ -322,6 +322,53 @@ talking to the bot can never grant control.
   and approve people deliberately in the dashboard, OR turn ON only for
   trusted, private bots.
 
+## Per-workflow subscriptions
+
+Recipients pick WHICH workflows they want. Default: nothing is offered —
+you publish workflows into the menu explicitly.
+
+1. **Publish a workflow** by setting `subscribable: true` at the top of the
+   YAML, OR by toggling "Offer this workflow in the bot's /subscriptions menu"
+   on its dashboard page (the dashboard toggle doesn't bump the version).
+
+   ```yaml
+   name: prod-deploys
+   subscribable: true              # opt into the bot menu
+   trigger: { webhook: { path: "prod-deploys" } }
+   steps:
+     - name: notify
+       action: telegram
+       with:
+         to: subscribers           # fan-out to APPROVED subscribers of THIS workflow
+         text: "🚀 prod {{ trigger.body.sha }} deployed"
+   ```
+
+2. **Subscribe** from Telegram: an APPROVED recipient sends `/subscriptions`
+   to the bot. They get one inline-keyboard message — `✅ Name` for workflows
+   they already follow, `⬜ Name` for the rest. Tapping a row toggles the
+   subscription and the SAME message redraws with the new check-marks (no
+   chat spam). PENDING chats get "waiting for approval"; REVOKED never gets a
+   menu.
+
+3. **Deliver** with `to: subscribers` in any telegram step. Only APPROVED
+   subscribers of THAT workflow receive — PENDING/REVOKED filtered out, even
+   if their `workflow_subscription` row still exists. Fan-out semantics match
+   `to: approved`: per-recipient send, the step fails only if every send
+   fails, `sent_count = 0` is a successful no-op (publish before anyone
+   subscribes is fine). Output includes `audience` so you can tell broadcasts
+   apart in the executions view.
+
+4. **REST surface** for tooling and the dashboard:
+
+   ```
+   PATCH /api/workflows/{id}/subscribable    body: { "subscribable": true|false }
+   GET   /api/workflows/{id}/subscribers     APPROVED subscribers only, masked chat ids
+   ```
+
+A workflow can be `subscribable: true` and still use `to: approved` or a
+literal `chat_id` — the addressing keys are independent. The intended pairing
+is `subscribable: true` + `to: subscribers`; the others are unchanged.
+
 ## REST API
 
 | Method & path | Description |
@@ -339,6 +386,7 @@ talking to the bot can never grant control.
 | `POST /api/tokens` · `GET /api/tokens` · `DELETE /api/tokens/{id}` | token management |
 | `GET /api/recipients?status=&page=&size=` · `POST /{id}/approve` · `POST /{id}/revoke` · `DELETE /{id}` | telegram recipient directory |
 | `GET /api/settings` · `PATCH /api/settings` | server-wide settings (today: `telegram_auto_approve`) |
+| `PATCH /api/workflows/{id}/subscribable` · `GET /api/workflows/{id}/subscribers` | per-workflow telegram subscriptions (M7) |
 | `POST /api/admin/purge` | run retention now (root key only) |
 | `GET /api/meta` | public: app name, authRequired |
 

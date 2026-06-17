@@ -3,11 +3,14 @@ package io.potok.api;
 import io.potok.definition.Workflow;
 import io.potok.execution.ExecutionService;
 import io.potok.execution.WorkflowExecution;
+import io.potok.recipient.Recipient;
+import io.potok.subscription.SubscriptionService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -27,10 +30,14 @@ public class WorkflowController {
 
     private final WorkflowService workflowService;
     private final ExecutionService executionService;
+    private final SubscriptionService subscriptionService;
 
-    public WorkflowController(WorkflowService workflowService, ExecutionService executionService) {
+    public WorkflowController(WorkflowService workflowService,
+                              ExecutionService executionService,
+                              SubscriptionService subscriptionService) {
         this.workflowService = workflowService;
         this.executionService = executionService;
+        this.subscriptionService = subscriptionService;
     }
 
     // No ALL_VALUE here: curl's default form-urlencoded would arrive mangled
@@ -93,6 +100,38 @@ public class WorkflowController {
                 .map(WorkflowResponse::from)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "workflow " + id + " or version " + versionNo + " not found"));
+    }
+
+    /**
+     * Direct flag flip — does NOT create a new version. The dashboard toggle
+     * uses this; the canonical value still lives in YAML for create/update.
+     */
+    @PatchMapping("/{id}/subscribable")
+    public WorkflowResponse setSubscribable(@PathVariable UUID id,
+                                            @RequestBody Map<String, Boolean> body) {
+        Boolean value = body == null ? null : body.get("subscribable");
+        if (value == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "body must be { \"subscribable\": true|false }");
+        }
+        return workflowService.setSubscribable(id, value)
+                .map(WorkflowResponse::from)
+                .orElseThrow(() -> notFound(id));
+    }
+
+    /** APPROVED recipients subscribed to this workflow (revoked rows excluded). */
+    @GetMapping("/{id}/subscribers")
+    public Map<String, Object> subscribers(@PathVariable UUID id) {
+        workflowService.findById(id).orElseThrow(() -> notFound(id));
+        List<Recipient> rows = subscriptionService.listApprovedSubscribers(id);
+        List<Map<String, Object>> items = rows.stream()
+                .map(r -> Map.<String, Object>of(
+                        "id", r.id(),
+                        "displayName", r.displayName(),
+                        "chatIdMasked", RecipientController.maskChatId(r.chatId()),
+                        "approvedAt", r.approvedAt()))
+                .toList();
+        return Map.of("items", items, "total", items.size());
     }
 
     @PostMapping("/{id}/run")

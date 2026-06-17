@@ -34,8 +34,9 @@ public class WorkflowService {
     @org.springframework.transaction.annotation.Transactional
     public Workflow create(String yamlSource) {
         WorkflowDefinition definition = parser.parse(yamlSource);
+        boolean subscribable = YamlDefinitionParser.parseSubscribable(yamlSource);
         try {
-            Workflow workflow = workflows.insert(definition.name(), yamlSource, definition);
+            Workflow workflow = workflows.insert(definition.name(), yamlSource, definition, subscribable);
             versions.insert(workflow.id(), 1, yamlSource, definition, null);
             events.publishEvent(new WorkflowsChangedEvent());
             return workflow;
@@ -52,8 +53,10 @@ public class WorkflowService {
     @org.springframework.transaction.annotation.Transactional
     public Optional<Workflow> updateWithComment(UUID id, String yamlSource, String comment) {
         WorkflowDefinition definition = parser.parse(yamlSource);
+        boolean subscribable = YamlDefinitionParser.parseSubscribable(yamlSource);
         try {
-            Optional<Workflow> updated = workflows.update(id, definition.name(), yamlSource, definition);
+            Optional<Workflow> updated = workflows.update(
+                    id, definition.name(), yamlSource, definition, subscribable);
             updated.ifPresent(w -> {
                 versions.insert(w.id(), w.currentVersion(), yamlSource, definition, comment);
                 events.publishEvent(new WorkflowsChangedEvent());
@@ -62,6 +65,11 @@ public class WorkflowService {
         } catch (DuplicateKeyException e) {
             throw new WorkflowConflictException("workflow named '" + definition.name() + "' already exists");
         }
+    }
+
+    /** Direct flip from the dashboard — no new version, no event needed. */
+    public Optional<Workflow> setSubscribable(UUID id, boolean subscribable) {
+        return workflows.setSubscribable(id, subscribable);
     }
 
     /** Rollback = a NEW version with the old content; history is append-only. */

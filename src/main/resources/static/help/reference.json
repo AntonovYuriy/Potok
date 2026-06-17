@@ -79,8 +79,8 @@
     },
     {
       "name": "telegram",
-      "params": "text (required); ONE of: chat_id | to_recipient (uuid or display name) | to: approved (broadcast to every APPROVED recipient)",
-      "output": "{status, chat_id, sent_count} for a single send; {sent_count, total_recipients, failed_count, failures} for a broadcast. 'to: approved' silently skips PENDING/REVOKED; 'to_recipient' targeting a non-APPROVED chat fails the step with a clear error (fail-loud — single targets are usually typos). Requires TELEGRAM_BOT_TOKEN env."
+      "params": "text (required); ONE of: chat_id | to_recipient (uuid or display name) | to: approved (every APPROVED recipient) | to: subscribers (APPROVED subscribers of THIS workflow — pair with subscribable: true at the workflow top level)",
+      "output": "{status, chat_id, sent_count} for a single send; {sent_count, total_recipients, failed_count, failures, audience} for a broadcast. 'to: approved'/'to: subscribers' silently skip PENDING/REVOKED; 'to_recipient' targeting a non-APPROVED chat fails the step with a clear error (fail-loud — single targets are usually typos). Empty subscribers/approved set is a successful no-op (sent_count=0). Requires TELEGRAM_BOT_TOKEN env."
     },
     {
       "name": "warsaw_waste",

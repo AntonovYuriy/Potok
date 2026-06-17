@@ -8,6 +8,7 @@ public record Workflow(
         UUID id,
         String name,
         boolean enabled,
+        boolean subscribable,
         String yamlSource,
         WorkflowDefinition definition,
         int currentVersion,

@@ -437,6 +437,28 @@ public class YamlDefinitionParser {
         return parsed;
     }
 
+    /**
+     * M7 opt-in for the per-recipient subscription menu. Top-level YAML
+     * {@code subscribable: true}; absent or non-boolean → false. Kept off the
+     * {@link WorkflowDefinition} (and the jsonb snapshot) because it changes no
+     * execution semantics — the dashboard flips it without bumping a version.
+     */
+    public static boolean parseSubscribable(String yamlSource) {
+        if (yamlSource == null || yamlSource.isBlank()) {
+            return false;
+        }
+        Object root;
+        try {
+            root = new Yaml(new SafeConstructor(new LoaderOptions())).load(yamlSource);
+        } catch (YAMLException ignored) {
+            return false;
+        }
+        if (root instanceof Map<?, ?> map && map.get("subscribable") instanceof Boolean b) {
+            return b;
+        }
+        return false;
+    }
+
     /** Spring cron needs 6 fields (with seconds); classic 5-field crontab specs get a leading "0". */
     public static String normalizeCron(String cron) {
         String trimmed = cron.trim();

@@ -199,7 +199,7 @@ class SslCheckActionHandlerTest {
     void missingHostFailsGracefully() {
         SslCheckActionHandler handler = new SslCheckActionHandler(
                 Clock.fixed(NOW, ZoneOffset.UTC), new io.potok.common.UrlGuard(true));
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "check", Map.of(), 1));
 
         assertThat(result.success()).isFalse();

@@ -26,23 +26,27 @@ public class WorkflowRepository {
         this.rowMapper = this::mapRow;
     }
 
-    public Workflow insert(String name, String yamlSource, WorkflowDefinition definition) {
+    public Workflow insert(String name, String yamlSource, WorkflowDefinition definition,
+                           boolean subscribable) {
         return jdbc.sql("""
-                        insert into workflow (name, yaml_source, definition)
-                        values (:name, :yaml, :definition::jsonb)
+                        insert into workflow (name, yaml_source, definition, subscribable)
+                        values (:name, :yaml, :definition::jsonb, :subscribable)
                         returning *
                         """)
                 .param("name", name)
                 .param("yaml", yamlSource)
                 .param("definition", toJson(definition))
+                .param("subscribable", subscribable)
                 .query(rowMapper)
                 .single();
     }
 
-    public Optional<Workflow> update(UUID id, String name, String yamlSource, WorkflowDefinition definition) {
+    public Optional<Workflow> update(UUID id, String name, String yamlSource,
+                                     WorkflowDefinition definition, boolean subscribable) {
         return jdbc.sql("""
                         update workflow
                         set name = :name, yaml_source = :yaml, definition = :definition::jsonb,
+                            subscribable = :subscribable,
                             enabled = true, current_version = current_version + 1, updated_at = now()
                         where id = :id
                         returning *
@@ -51,8 +55,33 @@ public class WorkflowRepository {
                 .param("name", name)
                 .param("yaml", yamlSource)
                 .param("definition", toJson(definition))
+                .param("subscribable", subscribable)
                 .query(rowMapper)
                 .optional();
+    }
+
+    /** Direct flag flip from the dashboard — does NOT create a new version. */
+    public Optional<Workflow> setSubscribable(UUID id, boolean subscribable) {
+        return jdbc.sql("""
+                        update workflow
+                        set subscribable = :subscribable, updated_at = now()
+                        where id = :id
+                        returning *
+                        """)
+                .param("id", id)
+                .param("subscribable", subscribable)
+                .query(rowMapper)
+                .optional();
+    }
+
+    public List<Workflow> findSubscribableEnabled() {
+        return jdbc.sql("""
+                        select * from workflow
+                        where enabled and subscribable
+                        order by name
+                        """)
+                .query(rowMapper)
+                .list();
     }
 
     public boolean disable(UUID id) {
@@ -119,6 +148,7 @@ public class WorkflowRepository {
                 rs.getObject("id", UUID.class),
                 rs.getString("name"),
                 rs.getBoolean("enabled"),
+                rs.getBoolean("subscribable"),
                 rs.getString("yaml_source"),
                 fromJson(rs.getString("definition")),
                 rs.getInt("current_version"),

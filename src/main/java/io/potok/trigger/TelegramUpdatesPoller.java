@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.potok.action.TelegramClient;
 import io.potok.execution.ApprovalService;
 import io.potok.execution.ApprovalService.Outcome;
+import io.potok.recipient.Recipient;
 import io.potok.recipient.RecipientService;
+import io.potok.subscription.SubscriptionService;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +49,7 @@ public class TelegramUpdatesPoller {
     private final TelegramClient telegram;
     private final ApprovalService approvals;
     private final RecipientService recipients;
+    private final SubscriptionService subscriptions;
     private final TelegramPollLock lock;
     private final ObjectMapper objectMapper;
     private final boolean enabled;
@@ -57,6 +60,7 @@ public class TelegramUpdatesPoller {
     public TelegramUpdatesPoller(TelegramClient telegram,
                                  ApprovalService approvals,
                                  RecipientService recipients,
+                                 SubscriptionService subscriptions,
                                  TelegramPollLock lock,
                                  ObjectMapper objectMapper,
                                  @Value("${potok.telegram.poll-updates:true}") boolean enabled,
@@ -64,6 +68,7 @@ public class TelegramUpdatesPoller {
         this.telegram = telegram;
         this.approvals = approvals;
         this.recipients = recipients;
+        this.subscriptions = subscriptions;
         this.lock = lock;
         this.objectMapper = objectMapper;
         this.enabled = enabled;
@@ -143,12 +148,18 @@ public class TelegramUpdatesPoller {
     private void handleCallback(JsonNode callback) {
         String callbackId = callback.path("id").asText();
         String data = callback.path("data").asText("");
-        boolean approve = data.startsWith("apr:");
-        boolean deny = data.startsWith("dny:");
-        if (!approve && !deny) {
-            answer(callbackId, "Unknown button");
+        if (data.startsWith("apr:") || data.startsWith("dny:")) {
+            handleApprovalCallback(callbackId, data);
             return;
         }
+        if (data.startsWith("sub:")) {
+            handleSubscriptionCallback(callbackId, data.substring(4), callback);
+            return;
+        }
+        answer(callbackId, "Unknown button");
+    }
+
+    private void handleApprovalCallback(String callbackId, String data) {
         Outcome outcome = approvals.decideByToken(data.substring(4));
         switch (outcome.status()) {
             case DECIDED -> {
@@ -163,6 +174,48 @@ public class TelegramUpdatesPoller {
         }
     }
 
+    /**
+     * /subscriptions menu tap. Re-checks the caller's APPROVED status before
+     * toggling (defence in depth — a stale button must not subscribe a revoked
+     * chat) and edits the same message so the keyboard updates in place rather
+     * than spamming the conversation.
+     */
+    private void handleSubscriptionCallback(String callbackId, String workflowToken, JsonNode callback) {
+        JsonNode message = callback.path("message");
+        String chatId = message.path("chat").path("id").asText("");
+        long messageId = message.path("message_id").asLong(0);
+        if (chatId.isBlank() || messageId == 0) {
+            answer(callbackId, "Cannot find the menu message");
+            return;
+        }
+        Recipient recipient = recipients.findByChatId(chatId).orElse(null);
+        if (recipient == null || recipient.status() != Recipient.Status.APPROVED) {
+            answer(callbackId, "🚫 Not authorised — ask the owner to approve you first");
+            return;
+        }
+        java.util.UUID workflowId;
+        try {
+            workflowId = java.util.UUID.fromString(workflowToken);
+        } catch (IllegalArgumentException e) {
+            answer(callbackId, "Unknown workflow");
+            return;
+        }
+        SubscriptionService.ToggleOutcome outcome = subscriptions.toggle(workflowId, recipient.id());
+        if (outcome.rejection() != null) {
+            answer(callbackId, "Cannot change — " + outcome.rejection());
+        } else {
+            answer(callbackId, outcome.subscribed() ? "Subscribed ✅" : "Unsubscribed ⬜");
+        }
+        // redraw the menu in place — the entire keyboard reflects the new state
+        SubscriptionService.Menu menu = subscriptions.buildMenu(recipient.id());
+        try {
+            telegram.editMessageTextWithButtons(chatId, messageId, menu.text(), menu.keyboard());
+        } catch (Exception e) {
+            log.warn("telegram_menu_edit_failed chatId={} error={}",
+                    chatId, io.potok.common.Errors.describe(e));
+        }
+    }
+
     private void handleMessage(JsonNode message) {
         JsonNode chat = message.path("chat");
         if (chat.isMissingNode()) {
@@ -174,8 +227,42 @@ public class TelegramUpdatesPoller {
         }
         String displayName = displayName(chat, message.path("from"));
         String text = message.path("text").asText("");
+
+        // /subscriptions is rendered as an interactive menu — it skips the
+        // plain-text reply path entirely. Recipient upsert still runs so the
+        // chat is registered (PENDING/REVOKED → friendly fallback).
+        if (text.trim().equalsIgnoreCase("/subscriptions")) {
+            handleSubscriptionsCommand(chatId, displayName);
+            return;
+        }
         recipients.handleBotMessage(chatId, displayName, text)
                 .ifPresent(reply -> sendReply(chatId, reply));
+    }
+
+    private void handleSubscriptionsCommand(String chatId, String displayName) {
+        Recipient recipient = recipients.onIncomingMessage(chatId, displayName).recipient();
+        switch (recipient.status()) {
+            case APPROVED -> sendMenu(chatId, recipient.id());
+            case PENDING -> sendReply(chatId,
+                    "👋 Subscriptions are available once the owner approves your chat. "
+                            + "You'll get a confirmation here when that happens.");
+            case REVOKED -> sendReply(chatId,
+                    "🚫 Your access is revoked — ask the owner to re-approve before subscribing.");
+        }
+    }
+
+    private void sendMenu(String chatId, java.util.UUID recipientId) {
+        SubscriptionService.Menu menu = subscriptions.buildMenu(recipientId);
+        try {
+            if (menu.keyboard().isEmpty()) {
+                telegram.sendMessage(chatId, menu.text());
+            } else {
+                telegram.sendMessageWithButtons(chatId, menu.text(), menu.keyboard());
+            }
+        } catch (Exception e) {
+            log.warn("telegram_menu_send_failed chatId={} error={}",
+                    chatId, io.potok.common.Errors.describe(e));
+        }
     }
 
     private static String displayName(JsonNode chat, JsonNode from) {

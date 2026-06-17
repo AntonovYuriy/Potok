@@ -3,6 +3,7 @@ package io.potok.action;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.potok.recipient.Recipient;
 import io.potok.recipient.RecipientService;
+import io.potok.subscription.SubscriptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,13 +29,15 @@ class TelegramActionHandlerTest {
 
     private TelegramClient telegram;
     private RecipientService recipients;
+    private SubscriptionService subscriptions;
     private TelegramActionHandler handler;
 
     @BeforeEach
     void setUp() {
         telegram = mock(TelegramClient.class);
         recipients = mock(RecipientService.class);
-        handler = new TelegramActionHandler(telegram, recipients);
+        subscriptions = mock(SubscriptionService.class);
+        handler = new TelegramActionHandler(telegram, recipients, subscriptions);
     }
 
     @SuppressWarnings("unchecked")
@@ -62,9 +65,10 @@ class TelegramActionHandlerTest {
     @DisplayName("fails gracefully without a bot token")
     void failsGracefullyWithoutToken() {
         TelegramActionHandler unconfigured = new TelegramActionHandler(new TelegramClient(
-                new ObjectMapper(), new TelegramProperties("", "https://api.telegram.org", "")), recipients);
+                new ObjectMapper(), new TelegramProperties("", "https://api.telegram.org", "")),
+                recipients, subscriptions);
 
-        StepResult result = unconfigured.execute(new StepContext(
+        StepResult result = unconfigured.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "notify",
                 Map.of("chat_id", "1", "text", "hi"), 1));
 
@@ -77,7 +81,7 @@ class TelegramActionHandlerTest {
     void failsWhenNoAddress() {
         when(telegram.isConfigured()).thenReturn(true);
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "notify", Map.of("text", "hi"), 1));
 
         assertThat(result.success()).isFalse();
@@ -89,7 +93,7 @@ class TelegramActionHandlerTest {
     void rejectsAmbiguousAddressing() {
         when(telegram.isConfigured()).thenReturn(true);
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "notify",
                 Map.of("chat_id", "1", "to", "approved", "text", "hi"), 1));
 
@@ -104,7 +108,7 @@ class TelegramActionHandlerTest {
         when(telegram.isConfigured()).thenReturn(true);
         when(telegram.sendMessage(eq("123"), eq("hi"))).thenReturn(response);
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "notify",
                 Map.of("chat_id", "123", "text", "hi"), 1));
 
@@ -122,7 +126,7 @@ class TelegramActionHandlerTest {
                 approved("100", "Alice"), approved("200", "Bob")));
         when(telegram.sendMessage(any(), any())).thenReturn(response);
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "broadcast",
                 Map.of("to", "approved", "text", "broadcast"), 1));
 
@@ -139,7 +143,7 @@ class TelegramActionHandlerTest {
         when(telegram.isConfigured()).thenReturn(true);
         when(recipients.listApproved()).thenReturn(List.of());
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "broadcast",
                 Map.of("to", "approved", "text", "hi"), 1));
 
@@ -155,7 +159,7 @@ class TelegramActionHandlerTest {
         when(recipients.listApproved()).thenReturn(List.of(approved("100", "Alice")));
         when(telegram.sendMessage(any(), any())).thenReturn(bad);
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "broadcast",
                 Map.of("to", "approved", "text", "hi"), 1));
 
@@ -174,7 +178,7 @@ class TelegramActionHandlerTest {
         when(telegram.sendMessage(eq("100"), any())).thenReturn(good);
         when(telegram.sendMessage(eq("200"), any())).thenReturn(bad);
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "broadcast",
                 Map.of("to", "approved", "text", "hi"), 1));
 
@@ -192,7 +196,7 @@ class TelegramActionHandlerTest {
         when(recipients.findApprovedByIdOrName("Charlie")).thenReturn(Optional.of(match));
         when(telegram.sendMessage(eq("999"), eq("hi"))).thenReturn(response);
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "notify",
                 Map.of("to_recipient", "Charlie", "text", "hi"), 1));
 
@@ -206,7 +210,7 @@ class TelegramActionHandlerTest {
         when(telegram.isConfigured()).thenReturn(true);
         when(recipients.findApprovedByIdOrName("ghost")).thenReturn(Optional.empty());
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "notify",
                 Map.of("to_recipient", "ghost", "text", "hi"), 1));
 
@@ -219,12 +223,12 @@ class TelegramActionHandlerTest {
     void toMustBeApproved() throws Exception {
         when(telegram.isConfigured()).thenReturn(true);
 
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "notify",
                 Map.of("to", "pending", "text", "hi"), 1));
 
         assertThat(result.success()).isFalse();
-        assertThat(result.error()).contains("'to' currently supports only 'approved'");
+        assertThat(result.error()).contains("'to' must be 'approved' or 'subscribers'");
         verify(telegram, never()).sendMessage(any(), any());
     }
 

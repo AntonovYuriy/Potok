@@ -164,7 +164,7 @@ public class PreviewService {
         Map<String, Object> with = new HashMap<>(poll.http());
         with.put("fail_on_status", false);
         StepResult result = callWithDeadline(http,
-                new StepContext(UUID.randomUUID(), "preview", "poll", with, 1), deadline);
+                new StepContext(null, UUID.randomUUID(), "preview", "poll", with, 1), deadline);
         if (!result.success()) {
             return new TriggerContext(new TriggerPreview("poll", note,
                     PreviewTexts.humanizeError(result.error()), result.error()), Map.of());
@@ -326,7 +326,7 @@ public class PreviewService {
                                         Instant deadline, Map<String, Object> stepOutputs) {
         ActionHandler handler = actions.find(step.action());
         StepResult result = callWithDeadline(handler,
-                new StepContext(UUID.randomUUID(), "preview", step.name(), input, 1), deadline);
+                new StepContext(null, UUID.randomUUID(), "preview", step.name(), input, 1), deadline);
         if (!result.success()) {
             return StepPreview.failed(step.name(), step.action(),
                     PreviewTexts.humanizeError(result.error()), result.error());

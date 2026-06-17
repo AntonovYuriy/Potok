@@ -72,7 +72,7 @@ public class PollerService {
         Map<String, Object> with = new HashMap<>(poll.http());
         with.put("fail_on_status", false); // any response is data for the poller
         StepResult result = http.execute(new StepContext(
-                UUID.randomUUID(), workflow.name(), "poll", with, 1));
+                workflow.id(), UUID.randomUUID(), workflow.name(), "poll", with, 1));
         if (!result.success()) {
             log.warn("poll_failed workflow={} error={}", workflow.name(), result.error());
             return; // transient fetch failure: keep previous state, try next tick

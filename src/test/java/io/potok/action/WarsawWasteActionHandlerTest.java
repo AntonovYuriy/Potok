@@ -90,7 +90,7 @@ class WarsawWasteActionHandlerTest {
 
     @Test
     void rejectsUnknownWhen() {
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "schedule",
                 Map.of("address_point_id", "1", "when", "yesterday"), 1));
 
@@ -100,7 +100,7 @@ class WarsawWasteActionHandlerTest {
 
     @Test
     void missingAddressPointIdFailsGracefully() {
-        StepResult result = handler.execute(new StepContext(
+        StepResult result = handler.execute(new StepContext(null,
                 UUID.randomUUID(), "wf", "schedule", Map.of(), 1));
 
         assertThat(result.success()).isFalse();

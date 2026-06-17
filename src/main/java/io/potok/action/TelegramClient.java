@@ -73,6 +73,22 @@ public class TelegramClient {
                 "chat_id", chatId, "message_id", messageId, "text", text));
     }
 
+    /**
+     * Replaces a message's text AND its inline keyboard — used by the
+     * /subscriptions menu so tapping a row updates checkmarks in place.
+     */
+    public HttpResponse<String> editMessageTextWithButtons(String chatId, long messageId,
+                                                           String text,
+                                                           List<List<Map<String, Object>>> keyboard)
+            throws java.io.IOException, InterruptedException {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("chat_id", chatId);
+        payload.put("message_id", messageId);
+        payload.put("text", text);
+        payload.put("reply_markup", Map.of("inline_keyboard", keyboard));
+        return call("editMessageText", payload);
+    }
+
     /** The toast shown to the user who tapped an inline button. */
     public HttpResponse<String> answerCallbackQuery(String callbackQueryId, String text)
             throws java.io.IOException, InterruptedException {

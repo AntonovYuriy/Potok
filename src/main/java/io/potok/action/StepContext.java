@@ -6,10 +6,14 @@ import java.util.UUID;
 /**
  * Everything a handler gets for one step attempt.
  *
+ * @param workflowId the workflow whose definition produced this step — handlers
+ *                   that route to per-workflow state (e.g. M7 subscriptions in
+ *                   the telegram action) read this; most ignore it
  * @param with    step inputs with all templates already resolved
  * @param attempt 1-based attempt number
  */
 public record StepContext(
+        UUID workflowId,
         UUID executionId,
         String workflowName,
         String stepName,

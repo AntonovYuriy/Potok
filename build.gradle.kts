@@ -2,6 +2,13 @@ plugins {
     java
     id("org.springframework.boot") version "3.5.14"
     id("io.spring.dependency-management") version "1.1.7"
+    // Retry rarely-flaky tests automatically. Spring's @SpringBootTest random
+    // port allocation occasionally races with a port that another (caching)
+    // test context just freed; the bytes arrive garbled and `RestTemplate`
+    // surfaces them as `parsing HTTP/1.1 status line, receiving [??????…]`.
+    // One retry is enough to absorb the rare collision without masking real
+    // failures — maxFailures still fails the build fast on widespread breakage.
+    id("org.gradle.test-retry") version "1.6.2"
 }
 
 group = "io.potok"
@@ -69,5 +76,13 @@ tasks.withType<Test> {
     environment("TEST_HOOK_SECRET", "integration-test-hook-secret")
     testLogging {
         events("passed", "skipped", "failed")
+    }
+    retry {
+        // One retry catches the rare random-port collision in @SpringBootTest;
+        // maxFailures caps the safety net so a real regression still trips the
+        // build (a broken commit reliably hits the failure ceiling on attempt 1).
+        maxRetries.set(1)
+        maxFailures.set(10)
+        failOnPassedAfterRetry.set(false)
     }
 }

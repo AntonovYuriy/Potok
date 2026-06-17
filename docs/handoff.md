@@ -4,7 +4,7 @@ _Last updated: 2026-06-17 (M6.1 audit follow-ups done)._
 
 ## Current state
 
-- **M6.1 audit follow-ups done — wording + test-coverage + flake guard** (2026-06-17, 236 tests):
+- **M6.1 audit follow-ups done — wording + test-coverage + flake guard** (2026-06-17, PR #18, squash `19d1dc1`, 236 tests):
   - **`to_recipient` wording aligned with the fail-loud behavior.** Behavior is unchanged — a `telegram` step targeting a non-APPROVED recipient by id/name fails the step with a clear error (`no approved recipient matches 'to_recipient': X (PENDING or REVOKED recipients never receive)`). README "Telegram recipients", `help/reference.json`, and the new integration test `toRecipientTargetingPendingFailsTheStep` make this explicit. Rationale: a single named target is almost certainly a typo or stale config, not something to silently swallow; broadcasts (`to: approved`) still skip non-APPROVED quietly.
   - **Integration coverage gaps closed (no behavior change, locks the rules in):**
     - `TelegramRecipientIngestIntegrationTest` drives the REAL `TelegramUpdatesPoller` via WireMock `/bot.*/getUpdates`: a `message` update from an unknown chat lands the recipient as PENDING, the bot replies, and the `offset` in subsequent getUpdates calls advances past the handled `update_id` so Telegram never re-delivers it. A second test ships two messages from the same chat in one batch and asserts the upsert keeps exactly one row + offset past both updates.

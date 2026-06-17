@@ -304,8 +304,13 @@ talking to the bot can never grant control.
         text: "Your call"
   ```
 
-  Only APPROVED recipients receive — PENDING/REVOKED are silently skipped even
-  if referenced. A broadcast step's output reports `sent_count`,
+  Only APPROVED recipients receive. For the **broadcast** (`to: approved`),
+  PENDING and REVOKED recipients are silently skipped. For **`to_recipient`**,
+  targeting a non-APPROVED chat (or an unknown name) **fails the step** with a
+  clear error like `no approved recipient matches 'to_recipient': X (PENDING or
+  REVOKED recipients never receive)` — fail-loud is intentional because a
+  single named target is almost certainly a typo or stale config, not something
+  to swallow. A broadcast step's output reports `sent_count`,
   `total_recipients`, and per-recipient failures; the step fails only if every
   send fails.
 - The bot reads incoming messages via a single-instance `getUpdates`

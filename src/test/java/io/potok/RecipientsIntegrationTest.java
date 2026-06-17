@@ -213,4 +213,113 @@ class RecipientsIntegrationTest extends IntegrationTestBase {
                 "/api/recipients/00000000-0000-0000-0000-000000000000/approve", Map.of());
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
+
+    /** DELETE 204 on a known id, 404 on a second call. */
+    @Test
+    void deleteRecipientThen404OnRepeat() {
+        setAutoApprove(true);
+        recipientService.handleBotMessage("773001", "Delete-Me", "/start");
+        Map<String, Object> row = findByName(listRecipients(null), "Delete-Me");
+        setAutoApprove(false);
+
+        ResponseEntity<Void> first = rest.exchange(
+                "/api/recipients/" + row.get("id"),
+                org.springframework.http.HttpMethod.DELETE, null, Void.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        ResponseEntity<Void> second = rest.exchange(
+                "/api/recipients/" + row.get("id"),
+                org.springframework.http.HttpMethod.DELETE, null, Void.class);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Spec-explicit fan-out shape: 2 APPROVED + 1 REVOKED + 1 PENDING → exactly
+     * 2 sends. Asserted chat-by-chat so unrelated approved recipients from
+     * other tests in the cached context cannot flake this.
+     */
+    @Test
+    void fanOutTwoApprovedOneRevokedOnePendingSendsExactlyTwo() {
+        WIRE_MOCK.stubFor(post(urlPathMatching("/bot.*/sendMessage"))
+                .willReturn(okJson("{\"ok\":true}")));
+        setAutoApprove(false);
+        recipientService.handleBotMessage("661001", "Two-A", "/start");
+        recipientService.handleBotMessage("661002", "Two-B", "/start");
+        recipientService.handleBotMessage("661003", "Two-R", "/start");
+        recipientService.handleBotMessage("661004", "Two-P", "/start");
+
+        Map<String, Object> a = findByName(listRecipients(null), "Two-A");
+        Map<String, Object> b = findByName(listRecipients(null), "Two-B");
+        Map<String, Object> r = findByName(listRecipients(null), "Two-R");
+        postJson("/api/recipients/" + a.get("id") + "/approve", Map.of());
+        postJson("/api/recipients/" + b.get("id") + "/approve", Map.of());
+        postJson("/api/recipients/" + r.get("id") + "/approve", Map.of());
+        postJson("/api/recipients/" + r.get("id") + "/revoke", Map.of());
+        // Two-P stays PENDING
+
+        ResponseEntity<Map<String, Object>> created = postYaml("/api/workflows", """
+                name: m6-broadcast-shape
+                trigger:
+                  webhook: { path: "m6-broadcast-shape" }
+                steps:
+                  - name: notify
+                    action: telegram
+                    with:
+                      to: approved
+                      text: "Broadcast shape"
+                """);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String workflowId = String.valueOf(created.getBody().get("id"));
+        ResponseEntity<Map<String, Object>> run = postJson(
+                "/api/workflows/" + workflowId + "/run", Map.of());
+        String executionId = String.valueOf(run.getBody().get("executionId"));
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(getExecution(executionId).get("status")).isEqualTo("SUCCEEDED"));
+
+        var requests = WIRE_MOCK.findAll(postRequestedFor(urlPathMatching("/bot.*/sendMessage")));
+        java.util.function.Function<String, Long> sentFor = chat -> requests.stream()
+                .filter(req -> req.getBodyAsString().contains("Broadcast shape")
+                        && req.getBodyAsString().contains(chat))
+                .count();
+        assertThat(sentFor.apply("661001")).as("approved Two-A").isEqualTo(1L);
+        assertThat(sentFor.apply("661002")).as("approved Two-B").isEqualTo(1L);
+        assertThat(sentFor.apply("661003")).as("revoked Two-R skipped").isEqualTo(0L);
+        assertThat(sentFor.apply("661004")).as("pending Two-P skipped").isEqualTo(0L);
+    }
+
+    /** Wording change: targeting a non-APPROVED recipient by name FAILS the step (fail-loud). */
+    @Test
+    void toRecipientTargetingPendingFailsTheStep() {
+        WIRE_MOCK.stubFor(post(urlPathMatching("/bot.*/sendMessage"))
+                .willReturn(okJson("{\"ok\":true}")));
+        setAutoApprove(false);
+        recipientService.handleBotMessage("772001", "Ghost-Pending", "/start");
+        // never approved → still PENDING
+
+        ResponseEntity<Map<String, Object>> created = postYaml("/api/workflows", """
+                name: m6-to-recipient-fail
+                trigger:
+                  webhook: { path: "m6-to-recipient-fail" }
+                steps:
+                  - name: notify
+                    action: telegram
+                    with:
+                      to_recipient: "Ghost-Pending"
+                      text: "should not arrive"
+                """);
+        String workflowId = String.valueOf(created.getBody().get("id"));
+        ResponseEntity<Map<String, Object>> run = postJson(
+                "/api/workflows/" + workflowId + "/run", Map.of());
+        String executionId = String.valueOf(run.getBody().get("executionId"));
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Map<String, Object> execution = getExecution(executionId);
+            assertThat(execution.get("status")).isEqualTo("FAILED");
+        });
+        long matched = WIRE_MOCK.findAll(postRequestedFor(urlPathMatching("/bot.*/sendMessage")))
+                .stream()
+                .filter(req -> req.getBodyAsString().contains("should not arrive"))
+                .count();
+        assertThat(matched).as("nothing sent for non-approved to_recipient").isEqualTo(0L);
+    }
 }

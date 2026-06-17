@@ -359,3 +359,106 @@ export async function refreshDlqBadge() {
         badge.textContent = data.total;
     } catch { /* auth prompt in flight — badge refreshes next tick */ }
 }
+
+export async function refreshRecipientsBadge() {
+    try {
+        const data = await api('/api/recipients?size=1&status=PENDING');
+        const badge = document.getElementById('recipients-badge');
+        badge.hidden = data.pending === 0;
+        badge.textContent = data.pending;
+    } catch { /* see DLQ badge */ }
+}
+
+/**
+ * Recipients page. Routes WHO RECEIVES telegram messages — NOT access. Auth
+ * to Potok stays X-API-Key / api_token regardless of who is approved here.
+ */
+export async function recipientsView(filter = 'ALL') {
+    const path = filter === 'ALL' ? '/api/recipients?size=200'
+        : `/api/recipients?size=200&status=${filter}`;
+    const [data, settings] = await Promise.all([
+        api(path),
+        api('/api/settings'),
+    ]);
+
+    const statusChip = s => `<span class="status ${esc(s)}">${esc(s)}</span>`;
+    const rowActions = r => {
+        const buttons = [];
+        if (r.status !== 'APPROVED') {
+            buttons.push(`<button data-approve="${r.id}">${r.status === 'REVOKED' ? 'Re-approve' : 'Approve'}</button>`);
+        }
+        if (r.status !== 'REVOKED') {
+            buttons.push(`<button class="danger" data-revoke="${r.id}">Revoke</button>`);
+        }
+        buttons.push(`<button class="danger" data-delete="${r.id}">Delete</button>`);
+        return buttons.join(' ');
+    };
+
+    const rows = data.items.map(r => `<tr>
+        <td>${esc(r.displayName)}</td>
+        <td class="mono muted">${esc(r.chatIdMasked)}</td>
+        <td>${statusChip(r.status)}</td>
+        <td class="muted">${fmtTime(r.lastSeenAt)}</td>
+        <td class="muted">${fmtTime(r.createdAt)}</td>
+        <td>${rowActions(r)}</td>
+    </tr>`).join('');
+
+    const filterButton = (label, value) =>
+        `<button data-filter="${value}" ${value === filter ? 'disabled' : ''}>${label}</button>`;
+
+    view().innerHTML = `<h1>Recipients</h1>
+        <div class="card">
+            <p class="muted" style="margin:0 0 0.5rem 0">
+                Telegram recipients receive bot notifications.
+                <strong>They have no access to Potok</strong> — the API and dashboard always stay behind
+                <code>X-API-Key</code>/<code>api_token</code>.
+            </p>
+            <label style="display:flex; gap:0.5rem; align-items:center; cursor:pointer">
+                <input type="checkbox" id="auto-approve" ${settings.telegram_auto_approve ? 'checked' : ''}>
+                <span>Auto-approve new people who message the bot
+                    <span class="muted">(default off — anyone who finds the bot would otherwise be subscribed automatically)</span>
+                </span>
+            </label>
+        </div>
+        <div class="toolbar">
+            ${filterButton(`All (${data.pending + data.approved + data.revoked})`, 'ALL')}
+            ${filterButton(`Pending (${data.pending})`, 'PENDING')}
+            ${filterButton(`Approved (${data.approved})`, 'APPROVED')}
+            ${filterButton(`Revoked (${data.revoked})`, 'REVOKED')}
+        </div>
+        ${data.items.length === 0 ? `<div class="empty">
+            ${filter === 'ALL'
+                ? 'No recipients yet — message the bot from a Telegram account to register.'
+                : `No ${filter.toLowerCase()} recipients.`}
+        </div>` : `
+        <table>
+            <thead><tr>
+                <th>Display name</th><th>Chat id</th><th>Status</th>
+                <th>Last seen</th><th>Created</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`}`;
+
+    document.getElementById('auto-approve').onchange = async e => {
+        try {
+            await api('/api/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telegram_auto_approve: e.target.checked }),
+            });
+        } catch (err) {
+            flash(err.message);
+            e.target.checked = !e.target.checked;
+        }
+    };
+    view().querySelectorAll('[data-filter]').forEach(b => b.onclick = () => recipientsView(b.dataset.filter));
+    view().querySelectorAll('[data-approve]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/recipients/${b.dataset.approve}/approve`, { method: 'POST' }),
+            () => recipientsView(filter)));
+    view().querySelectorAll('[data-revoke]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/recipients/${b.dataset.revoke}/revoke`, { method: 'POST' }),
+            () => recipientsView(filter)));
+    view().querySelectorAll('[data-delete]').forEach(b => b.onclick = () =>
+        op(() => api(`/api/recipients/${b.dataset.delete}`, { method: 'DELETE' }),
+            () => recipientsView(filter)));
+}

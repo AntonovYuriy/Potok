@@ -79,13 +79,18 @@ public class TelegramClient {
         return call("answerCallbackQuery", Map.of("callback_query_id", callbackQueryId, "text", text));
     }
 
-    /** Long-polls for updates; the request timeout leaves headroom over the poll timeout. */
-    public HttpResponse<String> getUpdates(long offset, int timeoutSeconds)
+    /**
+     * Long-polls for updates; the request timeout leaves headroom over the
+     * poll timeout. {@code allowed} lets the caller filter to e.g.
+     * {@code callback_query} for approvals or {@code message} for the
+     * recipient ingest — the M6 poller asks for both.
+     */
+    public HttpResponse<String> getUpdates(long offset, int timeoutSeconds, List<String> allowed)
             throws java.io.IOException, InterruptedException {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("offset", offset);
         payload.put("timeout", timeoutSeconds);
-        payload.put("allowed_updates", List.of("callback_query"));
+        payload.put("allowed_updates", allowed);
         return call("getUpdates", payload, Duration.ofSeconds(timeoutSeconds + 10L));
     }
 

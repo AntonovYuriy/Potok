@@ -167,6 +167,95 @@
     ]
   },
   {
+    "id": "email-alert",
+    "title": "Email me when a number crosses a line",
+    "problem": "Same number-watching as the Telegram threshold, but delivered to your inbox. Exchange rates, prices, counts — when a value in any JSON API crosses your line, Potok sends one email and stays quiet otherwise. Uses the server's SMTP settings, so any provider works.",
+    "trigger": "watches an API",
+    "actions": [
+      "email"
+    ],
+    "file": "email-alert.yaml",
+    "sample": "Subject: 📈 Threshold crossed — \"The value is now 4.3120 (> 4.30) — https://api.nbp.pl/…\"",
+    "default_name": "email-alert",
+    "params": [
+      {
+        "key": "url",
+        "label": "API address",
+        "type": "url",
+        "required": true,
+        "default": "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json",
+        "example": "https://api.example.com/stats",
+        "help": "Any address that returns JSON"
+      },
+      {
+        "key": "jsonpath",
+        "label": "Which number to watch",
+        "type": "string",
+        "required": true,
+        "default": "$.rates[0].mid",
+        "example": "$.price",
+        "help": "Path to the number inside the response, e.g. $.price or $.stats.followers"
+      },
+      {
+        "key": "comparison",
+        "label": "Alert when the value is",
+        "type": "select",
+        "options": [
+          "<",
+          ">",
+          "==",
+          "!="
+        ],
+        "required": true,
+        "default": ">",
+        "help": "How to compare the value with your threshold"
+      },
+      {
+        "key": "threshold",
+        "label": "Threshold",
+        "type": "number",
+        "required": true,
+        "default": "4.30",
+        "example": "100",
+        "help": "The line that triggers the email"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "1h",
+        "example": "10m",
+        "help": "e.g. 30s, 10m, 1h"
+      },
+      {
+        "key": "to",
+        "label": "Send to",
+        "type": "string",
+        "required": true,
+        "default": "you@example.com",
+        "example": "alerts@example.com",
+        "help": "Recipient address; comma-separate for several"
+      },
+      {
+        "key": "subject",
+        "label": "Email subject",
+        "type": "text",
+        "required": true,
+        "default": "📈 Threshold crossed",
+        "example": "Price alert",
+        "help": "Subject line of the email"
+      },
+      {
+        "key": "smtp",
+        "label": "SMTP server",
+        "type": "env",
+        "env": "SMTP_HOST",
+        "help": "uses ${SMTP_HOST} and the other SMTP_* vars from server env — nothing to enter"
+      }
+    ]
+  },
+  {
     "id": "confirm-before-act",
     "title": "Ask me before doing it",
     "problem": "A service wants to act — deploy, publish, order — but you want the final word. The request becomes a Telegram question with approve/deny links; only your \"yes\" triggers the action, and silence counts as \"no\".",

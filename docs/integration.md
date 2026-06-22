@@ -374,6 +374,45 @@ default; very large payloads should be split or summarised before posting.
 
 ## Cross-cutting
 
+### Delivery channels — Telegram and Email
+
+Potok delivers through two channels; both are ordinary actions, so a workflow
+can use either or both.
+
+- **`telegram`** — `text` plus one of `chat_id` / `to_recipient` / `to: approved` /
+  `to: subscribers`. Needs `TELEGRAM_BOT_TOKEN`.
+- **`email`** — SMTP, provider-agnostic (`SMTP_*` env). Params:
+
+  | Param | Required | Notes |
+  |---|---|---|
+  | `to` | yes | string or list of addresses; a single string may be comma/semicolon-separated |
+  | `cc`, `bcc` | no | string or list |
+  | `subject` | yes | templated |
+  | `body` | yes | templated; plain text unless `html: true` |
+  | `html` | no | default `false` → send `text/html` when `true` |
+
+  Addresses are validated, de-duplicated (case-insensitive) and capped at **50**
+  across To+Cc+Bcc. One send fans out to all recipients; the step fails only when
+  the whole send fails — a server that rejects some addresses still succeeds and
+  lists them under `failed`. Output: `{sent_count, failed_count, recipients}`
+  (plus `failed`). If `SMTP_HOST` is unset the step fails gracefully with a clear
+  message, exactly like `telegram` without a token. See [deploy.md](deploy.md)
+  for Gmail (app password) and Brevo/SendGrid setup.
+
+```yaml
+steps:
+  - name: notify
+    action: email
+    with:
+      to: "alerts@example.com"
+      subject: "📈 EUR crossed 4.30"
+      body: "The value is now {{ trigger.value }}"
+```
+
+**Preview** (`POST /api/preview`) **simulates both channels** — it renders the
+message (Telegram text, or email recipients + subject + body) and reports what
+*would* be sent, opening **zero** Telegram or SMTP connections.
+
 ### Finding `{base}`
 
 - `docker compose up` → `http://localhost:8080`.

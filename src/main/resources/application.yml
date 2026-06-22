@@ -55,6 +55,14 @@ potok:
     poll-updates: ${POTOK_TELEGRAM_POLL_UPDATES:true}
     api-base: ${POTOK_TELEGRAM_API_BASE:https://api.telegram.org}
     default-chat-id: ${TELEGRAM_CHAT_ID:}
+  smtp:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    from: ${SMTP_FROM:}
+    starttls: ${SMTP_STARTTLS:true}
+    auth: ${SMTP_AUTH:true}
   dlq:
     telegram-notify: ${POTOK_DLQ_TELEGRAM:false}
     notify-interval: ${POTOK_DLQ_NOTIFY_INTERVAL:PT1M}

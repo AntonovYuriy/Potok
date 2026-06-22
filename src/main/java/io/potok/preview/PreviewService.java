@@ -301,16 +301,20 @@ public class PreviewService {
         return switch (dispatch(step.action(), input)) {
             case EXECUTE -> executeReadOnly(step, input, deadline, stepOutputs);
             case SIMULATE_TELEGRAM -> simulateTelegram(step, input, stepOutputs);
+            case SIMULATE_EMAIL -> simulateEmail(step, input, stepOutputs);
             case SIMULATE_HTTP -> simulateHttp(step, input, stepOutputs);
             case SIMULATE_UNKNOWN -> simulateUnknown(step, input, stepOutputs);
         };
     }
 
-    private enum Dispatch { EXECUTE, SIMULATE_TELEGRAM, SIMULATE_HTTP, SIMULATE_UNKNOWN }
+    private enum Dispatch { EXECUTE, SIMULATE_TELEGRAM, SIMULATE_EMAIL, SIMULATE_HTTP, SIMULATE_UNKNOWN }
 
     private Dispatch dispatch(String action, Map<String, Object> input) {
         if ("telegram".equals(action)) {
             return Dispatch.SIMULATE_TELEGRAM;
+        }
+        if ("email".equals(action)) {
+            return Dispatch.SIMULATE_EMAIL;
         }
         if ("http".equals(action)) {
             String method = String.valueOf(input.getOrDefault("method", "GET")).toUpperCase(Locale.ROOT);
@@ -360,6 +364,39 @@ public class PreviewService {
         return StepPreview.simulated(step.name(), "telegram",
                 PreviewTexts.telegramSummary(String.valueOf(
                         PreviewTexts.truncate(text, 500))), null, rendered);
+    }
+
+    private StepPreview simulateEmail(WorkflowDefinition.Step step, Map<String, Object> input,
+                                      Map<String, Object> stepOutputs) {
+        List<Object> recipients = emailRecipients(input);
+        String subject = String.valueOf(input.getOrDefault("subject", ""));
+        String body = String.valueOf(input.getOrDefault("body", ""));
+        boolean html = Boolean.TRUE.equals(input.get("html"))
+                || "true".equalsIgnoreCase(String.valueOf(input.get("html")));
+        Map<String, Object> rendered = new LinkedHashMap<>();
+        rendered.put("to", recipients);
+        if (input.get("cc") != null) {
+            rendered.put("cc", input.get("cc"));
+        }
+        if (input.get("bcc") != null) {
+            rendered.put("bcc", input.get("bcc"));
+        }
+        rendered.put("subject", PreviewTexts.truncate(subject, MAX_STRING_CHARS));
+        rendered.put("body", PreviewTexts.truncate(body, MAX_STRING_CHARS));
+        rendered.put("html", html);
+        stepOutputs.put(step.name(), Map.of("simulated", true));
+        return StepPreview.simulated(step.name(), "email",
+                PreviewTexts.emailSummary(recipients, String.valueOf(
+                        PreviewTexts.truncate(subject, 500))), null, rendered);
+    }
+
+    /** {@code to} may be a single string or a list — normalise for the preview view. */
+    private static List<Object> emailRecipients(Map<String, Object> input) {
+        Object to = input.get("to");
+        if (to instanceof List<?> list) {
+            return List.copyOf(list);
+        }
+        return to == null ? List.of() : List.of(to);
     }
 
     private StepPreview simulateHttp(WorkflowDefinition.Step step, Map<String, Object> input,

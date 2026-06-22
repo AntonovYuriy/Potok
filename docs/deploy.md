@@ -46,6 +46,13 @@ or make the package public (GitHub → Packages → potok → settings → visib
    | `TELEGRAM_BOT_TOKEN` | bot token (Secret) — optional |
    | `TELEGRAM_CHAT_ID` | default chat — optional |
    | `POTOK_DLQ_TELEGRAM` | `true` for DLQ alerts — optional |
+   | `SMTP_HOST` | SMTP server for the email action — optional (unset = email steps fail gracefully) |
+   | `SMTP_PORT` | submission port — optional, default `587` |
+   | `SMTP_USERNAME` | SMTP login — optional |
+   | `SMTP_PASSWORD` | SMTP password / app password (Secret) — optional |
+   | `SMTP_FROM` | sender address — optional, defaults to `SMTP_USERNAME` |
+   | `SMTP_STARTTLS` | optional, default `true` |
+   | `SMTP_AUTH` | optional, default `true` |
    | `POTOK_LOG_JSON` | `true` (Koyeb log search works better with JSON) |
 
 7. Deploy. First boot runs Flyway migrations automatically.
@@ -69,6 +76,38 @@ curl -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
   and set `MY_HOOK_SECRET` as a Koyeb Secret env var. GitHub webhooks: same
   secret in the webhook settings, GitHub signs with X-Hub-Signature-256
   automatically. Unsigned/invalid deliveries get 401.
+
+## Email channel (SMTP)
+
+Potok's `email` action is provider-agnostic — point the `SMTP_*` vars at any
+submission server. If `SMTP_HOST` is unset the action fails the step with a
+clear message (just like the telegram action without a token), so leaving it
+blank is safe.
+
+**Gmail (what the owner uses):**
+
+1. Enable 2-Step Verification on the Google account (required for app passwords).
+2. Create an **App password**: Google Account → Security → 2-Step Verification →
+   App passwords. You get a 16-character password — use it as `SMTP_PASSWORD`,
+   not your normal account password.
+3. Set:
+
+   | Var | Value |
+   |---|---|
+   | `SMTP_HOST` | `smtp.gmail.com` |
+   | `SMTP_PORT` | `587` |
+   | `SMTP_USERNAME` | your full Gmail address |
+   | `SMTP_PASSWORD` | the 16-char app password (Secret) |
+   | `SMTP_FROM` | same Gmail address (Gmail rewrites mismatched From to the account) |
+   | `SMTP_STARTTLS` | `true` |
+
+   Caveats: Gmail caps free sending at **~500 recipients/day**, and the `From`
+   must match the authenticated account.
+
+**Free alternatives** (better deliverability and higher limits for
+notifications): **Brevo** (~300 emails/day free) and **SendGrid** (~100/day
+free). Both give you an SMTP host, a username, and an API-key-as-password —
+drop them into the same `SMTP_*` vars; the engine stays provider-agnostic.
 
 ## Honest notes (free-tier caveats)
 

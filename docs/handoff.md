@@ -1,8 +1,18 @@
 # Handoff
 
-_Last updated: 2026-06-22 (M8.1-pre done)._
+_Last updated: 2026-06-22 (M9 done)._
 
 ## Current state
+
+- **M9 done — SMTP settings in the dashboard (write-only encrypted secret)** (2026-06-22, PR #22, squash `1508676`, 294 tests):
+  - **Goal:** configure the sending SMTP account from the dashboard; the app-password is **write-only** (set/updated, never returned to the UI). Env `SMTP_*` stays a fallback — existing Render/Koyeb deployments unchanged.
+  - **Storage + secret-at-rest.** New single-row `smtp_config` table (Flyway **V13**: host/port/username/from_address/starttls/auth/password_encrypted, `id boolean PK check(id)` singleton). Password stored **AES-256-GCM** via `common/SecretCipher` (wire format base64 `[12B IV][ct+16B tag]`) keyed by base64 32-byte `POTOK_SECRET_KEY`. No key → API refuses to store a password (`400 "set POTOK_SECRET_KEY to store secrets"`, `SecretKeyMissingException` → `ApiExceptionHandler`); env SMTP still works. Plaintext decrypted only at send time, in memory; never logged/serialised.
+  - **Resolution (backward compatible).** `EmailClient` was refactored from holding `EmailProperties` to resolving an effective `SmtpConfig` per call via `SmtpConfigResolver` (implemented by `SmtpSettingsService`): **complete DB config → `SMTP_*` env → none**. A DB row counts as complete only when host is set and (auth off OR a decryptable password exists); incomplete/undecryptable falls back to env. Preview still simulates (the simulate path never touches `EmailClient`).
+  - **API** (`/api/settings/smtp`, token-authed like all `/api/**`): `GET` → host/port/username/from/starttls/auth + `configured`/`password_set`/`source` (`db`|`env`|`none`), never the password; `PUT` stores config, `password` optional (omit → keep stored secret); `DELETE` clears the DB row; `POST /test` connects+authenticates only (sends nothing) → `{ok, error}` with a category-mapped safe message (never echoes the secret). Test orchestration lives in the controller (EmailClient + service) to avoid an EmailClient↔service cycle.
+  - **Dashboard.** New **Settings** nav → "Email (SMTP)" section (`settingsView` in views.js, `#/settings` route): fields prefilled from GET; write-only password (`●●●● configured` + Change toggle, else input with "app password — never shown again"); **Send test** button (inline ok/error); env-override banner when `source=env`. Minimal form CSS added to app.css.
+  - **Tests: 18 new.** `SecretCipherTest` (round-trip, random IV, disabled-without-key refuses, 32-byte key validation, wrong-key GCM failure). `SmtpSettingsServiceTest` (db>env>none precedence, incomplete-db fallback, PUT-without-password preserves secret, encrypt-on-new-password, refuse-without-key, view hides secret). `SmtpSettingsIntegrationTest` (GreenMail w/ auth user: row holds ciphertext not plaintext, GET hides secret, real send via DB config, DELETE→env, test ok + bad-auth). Full suite green twice; `integration.md == connect.md` (HelpIntegrationDocsTest).
+  - **Verify:** the integration tests assert ciphertext-in-row + decrypt-and-send via DB config + GET-never-leaks + test endpoint — the DoD manual checks, automated.
+  - **Queued:** M9.x (e.g. key rotation/re-encrypt helper; same secret-at-rest pattern could wrap the Telegram token); M8.1 email-over-subscriptions; tags/digest/Slack still queued.
 
 - **M8.1-pre done — coin-watcher drift fix + multi-channel test** (2026-06-22, PR #21, squash `abade64`, 276 tests):
   - **coin-watcher local-vs-CI drift resolved.** The untracked `examples/coin-watcher.yaml` (never committed, near-duplicate of the canonical tracked `examples/my-coin.yaml` whose workflow name is `coin-watcher`, no manifest entry, no references) was a stray leftover — **deleted**. Local and CI now validate an identical example set (no untracked yaml skewing local-only `ExamplesIntegrationTest` runs).

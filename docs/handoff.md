@@ -1,8 +1,14 @@
 # Handoff
 
-_Last updated: 2026-06-22 (M8 done)._
+_Last updated: 2026-06-22 (M8.1-pre done)._
 
 ## Current state
+
+- **M8.1-pre done — coin-watcher drift fix + multi-channel test** (2026-06-22, PR #21, squash `abade64`, 276 tests):
+  - **coin-watcher local-vs-CI drift resolved.** The untracked `examples/coin-watcher.yaml` (never committed, near-duplicate of the canonical tracked `examples/my-coin.yaml` whose workflow name is `coin-watcher`, no manifest entry, no references) was a stray leftover — **deleted**. Local and CI now validate an identical example set (no untracked yaml skewing local-only `ExamplesIntegrationTest` runs).
+  - **M8 audit GAP item 11 closed.** New `multi-channel-alert` gallery template (poll threshold → parallel `telegram` + `email` root steps, `needs: []`) shipped through the normal pipeline (tpl + manifest + drift-guarded example + gallery-order test + README row). New `MultiChannelIntegrationTest` (WireMock telegram + GreenMail SMTP): both channels deliver from one workflow; telegram failing still delivers the email and vice versa (independence proven both directions).
+  - **Test-harness gotcha recorded:** GreenMail `reset()` rebinds its dynamic SMTP port — when a context binds `potok.smtp.port` once at startup, a second sending test after a reset hits "connection refused". Use `purgeEmailFromAllMailboxes()` between cases instead. (`EmailE2EIntegrationTest` still uses `reset()` but is stable because only one of its tests sends; left as-is.)
+  - Suite: **276 tests**, full `./gradlew clean test` green twice; only retry is the pre-existing Telegram-ingest port-flake (M6.1). Multi-channel suite deterministic across 3 reruns.
 
 - **M8 done — email delivery channel (SMTP)** (2026-06-22, PR #20, squash `61f24a6`, 272 tests):
   - **New `email` action via the existing ActionHandler SPI** — `EmailActionHandler` (`type()="email"`), discovered as a Spring bean exactly like the other actions; core engine and `JobProcessor` untouched. `EmailClient` wraps Jakarta Mail / Angus directly (no Spring Mail autoconfig), like `TelegramClient` wraps `HttpClient`. Connect/read/write timeouts capped at 10s so a stuck SMTP server can't hang a worker.

@@ -33,7 +33,7 @@ curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
 
 ## Use cases
 
-Sixteen ready-to-use automations. Pick one in the dashboard (Help →
+Seventeen ready-to-use automations. Pick one in the dashboard (Help →
 Examples), fill a short form — URL, threshold, schedule — hit Preview ▶ to
 see what would happen right now, then Create. Full walkthroughs with sample
 messages: [docs/use-cases.md](docs/use-cases.md).
@@ -44,6 +44,7 @@ messages: [docs/use-cases.md](docs/use-cases.md).
 | Remind me — and don't let it go | cron + durable `wait` | [follow-up-reminder.yaml](examples/follow-up-reminder.yaml) |
 | Watch a number from any API | poll + jsonpath, edge-triggered | [json-threshold.yaml](examples/json-threshold.yaml) |
 | Email me when a number crosses a line | poll + jsonpath → `email` | [email-alert.yaml](examples/email-alert.yaml) |
+| Alert me on Telegram AND email at once | poll → parallel `telegram` + `email` | [multi-channel-alert.yaml](examples/multi-channel-alert.yaml) |
 | Ask me before doing it (human-in-the-loop) | webhook + `approval` | [confirm-before-act.yaml](examples/confirm-before-act.yaml) |
 | Get told when a page mentions something | poll + `contains()` | [keyword-on-page.yaml](examples/keyword-on-page.yaml) |
 | Know when a price drops ("249,99 zł" parsed) | poll + css + `number: true` | [price-drop.yaml](examples/price-drop.yaml) |

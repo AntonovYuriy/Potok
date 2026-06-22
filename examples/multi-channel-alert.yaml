@@ -1,0 +1,27 @@
+# One trigger, two channels. When a number crosses your line, Potok pings BOTH
+# Telegram and email. The two steps are independent roots (needs: []), so they
+# run in parallel and one channel failing never blocks the other.
+name: multi-channel-alert
+trigger:
+  poll:
+    interval: 1h
+    http:
+      method: GET
+      url: "https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json"
+    extract:
+      jsonpath: "$.rates[0].mid"
+    fire_when: "{{ poll.value > 4.30 }}"
+steps:
+  - name: telegram_alert
+    action: telegram
+    needs: []
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "📈 The value is now {{ trigger.value }} (> 4.30)"
+  - name: email_alert
+    action: email
+    needs: []
+    with:
+      to: "you@example.com"
+      subject: "📈 Threshold crossed"
+      body: "The value is now {{ trigger.value }} (> 4.30) — https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json"

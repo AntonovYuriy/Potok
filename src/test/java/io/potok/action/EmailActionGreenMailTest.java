@@ -31,7 +31,8 @@ class EmailActionGreenMailTest {
         EmailProperties props = new EmailProperties(
                 "127.0.0.1", greenMail.getSmtp().getPort(),
                 null, null, "bot@potok.io", false, false);
-        handler = new EmailActionHandler(new EmailClient(props));
+        SmtpConfig config = SmtpConfig.fromEnv(props);
+        handler = new EmailActionHandler(new EmailClient(() -> config));
     }
 
     @AfterEach

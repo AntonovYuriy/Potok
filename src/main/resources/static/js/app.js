@@ -1,7 +1,7 @@
 // Hash router + auto-refresh (simple polling, 7s on the open view).
 // Editor views never auto-refresh — that would eat unsaved typing.
 import { initAuth } from './api.js';
-import { workflowList, workflowDetail, executionDetail, dlqList, refreshDlqBadge, editorView, tokensView, recipientsView, refreshRecipientsBadge } from './views.js';
+import { workflowList, workflowDetail, executionDetail, dlqList, refreshDlqBadge, editorView, tokensView, recipientsView, refreshRecipientsBadge, settingsView } from './views.js';
 import { helpView } from './help.js';
 
 const REFRESH_MS = 7000;
@@ -19,6 +19,7 @@ function resolve(hash) {
     if (hash.startsWith('#/dlq')) return { render: dlqList, refresh: true, nav: 'dlq' };
     if (hash.startsWith('#/recipients')) return { render: recipientsView, refresh: true, nav: 'recipients' };
     if (hash.startsWith('#/tokens')) return { render: tokensView, refresh: false, nav: 'tokens' };
+    if (hash.startsWith('#/settings')) return { render: settingsView, refresh: false, nav: 'settings' };
     if (hash.startsWith('#/help')) return { render: helpView, refresh: false, nav: 'help' };
     return { render: workflowList, refresh: true, nav: 'workflows' };
 }

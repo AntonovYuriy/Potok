@@ -43,6 +43,7 @@ or make the package public (GitHub → Packages → potok → settings → visib
    | `DB_PASSWORD` | Neon password (use Koyeb **Secret** type) |
    | `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | `5` |
    | `POTOK_API_KEY` | long random string (Secret) — REQUIRED on a public URL, guards /api/** and the dashboard ops |
+   | `POTOK_SECRET_KEY` | base64 32-byte key (Secret) — REQUIRED only to store SMTP credentials from the dashboard; env `SMTP_*` works without it |
    | `TELEGRAM_BOT_TOKEN` | bot token (Secret) — optional |
    | `TELEGRAM_CHAT_ID` | default chat — optional |
    | `POTOK_DLQ_TELEGRAM` | `true` for DLQ alerts — optional |
@@ -108,6 +109,29 @@ blank is safe.
 notifications): **Brevo** (~300 emails/day free) and **SendGrid** (~100/day
 free). Both give you an SMTP host, a username, and an API-key-as-password —
 drop them into the same `SMTP_*` vars; the engine stays provider-agnostic.
+
+### Configuring SMTP from the dashboard (encrypted at rest)
+
+Instead of env vars you can set SMTP under **Settings → Email (SMTP)** in the
+dashboard. The host/port/username/from/STARTTLS/auth are stored in Postgres; the
+**password is encrypted at rest with AES-256-GCM** and is **never shown again or
+returned by the API** (write-only).
+
+This requires a `POTOK_SECRET_KEY` — a base64-encoded 32-byte key:
+
+```bash
+openssl rand -base64 32
+```
+
+Set it as a Koyeb **Secret**. Without it, the dashboard refuses to store a
+password (clear `400: set POTOK_SECRET_KEY to store secrets`) but **env-based
+`SMTP_*` keeps working** — nothing breaks for an existing deployment. Precedence
+at send time: a complete DB config wins, else the `SMTP_*` env vars, else the
+email step fails gracefully. The Settings page shows the active source and a
+**Send test** button that connects + authenticates without sending an email.
+
+> Rotating `POTOK_SECRET_KEY` invalidates the stored password (it can't be
+> decrypted) — re-enter it in the dashboard, or fall back to env `SMTP_*`.
 
 ## Honest notes (free-tier caveats)
 

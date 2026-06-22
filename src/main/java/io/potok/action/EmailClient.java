@@ -16,7 +16,9 @@ import java.util.Properties;
 
 /**
  * Thin SMTP client (plain Jakarta Mail / Angus, no Spring Mail autoconfig)
- * shared by the email action. Config comes from {@code SMTP_*} env only.
+ * shared by the email action. The effective config is resolved per call via
+ * {@link SmtpConfigResolver} — DB-stored settings take precedence over the
+ * {@code SMTP_*} env vars (M9), env keeps working unchanged.
  *
  * <p>Connection/read/write timeouts are capped at {@value #TIMEOUT_MS} ms so a
  * stuck SMTP server can never hang a worker thread.
@@ -24,25 +26,25 @@ import java.util.Properties;
 @Component
 public class EmailClient {
 
-    private static final int TIMEOUT_MS = 10_000;
+    static final int TIMEOUT_MS = 10_000;
 
-    private final EmailProperties properties;
+    private final SmtpConfigResolver resolver;
 
-    public EmailClient(EmailProperties properties) {
-        this.properties = properties;
+    public EmailClient(SmtpConfigResolver resolver) {
+        this.resolver = resolver;
     }
 
     public boolean isConfigured() {
-        return properties.isConfigured();
+        return resolver.resolve().configured();
     }
 
     public String from() {
-        return properties.fromOrUsername();
+        return resolver.resolve().effectiveFrom();
     }
 
     /** A blank MimeMessage bound to a freshly-configured session. */
     public MimeMessage newMessage() {
-        return new MimeMessage(session());
+        return new MimeMessage(session(resolver.resolve()));
     }
 
     /**
@@ -52,14 +54,10 @@ public class EmailClient {
      * failure (connect/auth/all-rejected) throws.
      */
     public SendOutcome send(Message message, Address[] recipients) throws MessagingException {
-        Session session = session();
+        SmtpConfig config = resolver.resolve();
+        Session session = session(config);
         try (Transport transport = session.getTransport("smtp")) {
-            if (properties.authOrDefault()) {
-                transport.connect(properties.host(), properties.portOrDefault(),
-                        properties.username(), properties.password());
-            } else {
-                transport.connect();
-            }
+            connect(transport, config);
             try {
                 transport.sendMessage(message, recipients);
                 return new SendOutcome(recipients, new Address[0]);
@@ -74,20 +72,40 @@ public class EmailClient {
         }
     }
 
-    private Session session() {
+    /**
+     * Connects + authenticates against the given config WITHOUT sending — used
+     * by the "send test" button. Throws on any failure (caller maps to a safe
+     * message). Never logs the password.
+     */
+    public void verify(SmtpConfig config) throws MessagingException {
+        Session session = session(config);
+        try (Transport transport = session.getTransport("smtp")) {
+            connect(transport, config);
+        }
+    }
+
+    private void connect(Transport transport, SmtpConfig config) throws MessagingException {
+        if (config.auth()) {
+            transport.connect(config.host(), config.port(), config.username(), config.password());
+        } else {
+            transport.connect();
+        }
+    }
+
+    private Session session(SmtpConfig config) {
         Properties props = new Properties();
-        props.put("mail.smtp.host", properties.host());
-        props.put("mail.smtp.port", String.valueOf(properties.portOrDefault()));
-        props.put("mail.smtp.auth", String.valueOf(properties.authOrDefault()));
-        props.put("mail.smtp.starttls.enable", String.valueOf(properties.starttlsOrDefault()));
+        props.put("mail.smtp.host", String.valueOf(config.host()));
+        props.put("mail.smtp.port", String.valueOf(config.port()));
+        props.put("mail.smtp.auth", String.valueOf(config.auth()));
+        props.put("mail.smtp.starttls.enable", String.valueOf(config.starttls()));
         props.put("mail.smtp.connectiontimeout", String.valueOf(TIMEOUT_MS));
         props.put("mail.smtp.timeout", String.valueOf(TIMEOUT_MS));
         props.put("mail.smtp.writetimeout", String.valueOf(TIMEOUT_MS));
-        if (properties.authOrDefault()) {
+        if (config.auth()) {
             return Session.getInstance(props, new Authenticator() {
                 @Override
                 protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(properties.username(), properties.password());
+                    return new PasswordAuthentication(config.username(), config.password());
                 }
             });
         }

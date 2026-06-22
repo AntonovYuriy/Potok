@@ -39,6 +39,7 @@ management:
 
 potok:
   api-key: ${POTOK_API_KEY:}
+  secret-key: ${POTOK_SECRET_KEY:}
   public-url: ${POTOK_PUBLIC_URL:http://localhost:8080}
   queue:
     workers: ${POTOK_QUEUE_WORKERS:2}

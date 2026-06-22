@@ -32,6 +32,7 @@ dependencies {
     implementation("com.rometools:rome:2.1.0")
     implementation("com.jayway.jsonpath:json-path:2.9.0")
     implementation("org.jsoup:jsoup:1.22.2")
+    implementation("org.eclipse.angus:angus-mail:2.0.3")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
     implementation("org.flywaydb:flyway-core")
@@ -43,6 +44,7 @@ dependencies {
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.wiremock:wiremock-standalone:3.13.2")
+    testImplementation("com.icegreen:greenmail:2.1.3")
     testImplementation("org.awaitility:awaitility")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

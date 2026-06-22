@@ -303,6 +303,40 @@ class PreviewIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void emailIsSimulatedNotSent() {
+        WIRE_MOCK.stubFor(get("/rate").willReturn(okJson("{\"rates\":[{\"mid\":4.5}]}")));
+
+        Map<String, Object> result = preview("""
+                name: pv-email
+                trigger:
+                  poll:
+                    interval: 1h
+                    http:
+                      url: %s/rate
+                    extract:
+                      jsonpath: "$.rates[0].mid"
+                    fire_when: "{{ poll.value > 4.30 }}"
+                steps:
+                  - name: notify
+                    action: email
+                    with:
+                      to: "alerts@example.com"
+                      subject: "Rate crossed"
+                      body: "The value is now {{ trigger.value }}"
+                """.formatted(WIRE_MOCK.baseUrl()));
+
+        Map<String, Object> notify = steps(result).get(0);
+        assertThat(notify.get("mode")).isEqualTo("simulated");
+        assertThat((String) notify.get("human_summary"))
+                .contains("Would send email to alerts@example.com")
+                .contains("subject \"Rate crossed\"");
+        Map<String, Object> rendered = (Map<String, Object>) notify.get("rendered_output");
+        assertThat((List<Object>) rendered.get("to")).containsExactly("alerts@example.com");
+        assertThat(rendered.get("body")).isEqualTo("The value is now 4.5");
+    }
+
+    @Test
     void rejectsMoreThanTenSteps() {
         StringBuilder yaml = new StringBuilder("""
                 name: pv-too-big

@@ -28,7 +28,7 @@
     },
     {
       "field": "action",
-      "notes": "http | telegram | warsaw_waste | ssl_check | your own ActionHandler bean"
+      "notes": "http | telegram | email | warsaw_waste | ssl_check | your own ActionHandler bean"
     },
     {
       "field": "with",
@@ -81,6 +81,11 @@
       "name": "telegram",
       "params": "text (required); ONE of: chat_id | to_recipient (uuid or display name) | to: approved (every APPROVED recipient) | to: subscribers (APPROVED subscribers of THIS workflow — pair with subscribable: true at the workflow top level)",
       "output": "{status, chat_id, sent_count} for a single send; {sent_count, total_recipients, failed_count, failures, audience} for a broadcast. 'to: approved'/'to: subscribers' silently skip PENDING/REVOKED; 'to_recipient' targeting a non-APPROVED chat fails the step with a clear error (fail-loud — single targets are usually typos). Empty subscribers/approved set is a successful no-op (sent_count=0). Requires TELEGRAM_BOT_TOKEN env."
+    },
+    {
+      "name": "email",
+      "params": "to (required, string or list); cc, bcc (optional, string or list); subject (required); body (required); html (default false → text/html when true). Addresses validated, de-duplicated, capped at 50 across To+Cc+Bcc; a single string may be comma/semicolon-separated.",
+      "output": "{sent_count, failed_count, recipients} (plus 'failed' addresses when the server rejected some). One send fans out to all recipients; the step fails only when the whole send fails. Requires SMTP_* env (SMTP_HOST/USERNAME/PASSWORD…); unset = the step fails gracefully with a clear message. In preview the email is SIMULATED, never sent."
     },
     {
       "name": "warsaw_waste",

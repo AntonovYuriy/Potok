@@ -7,8 +7,8 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
 **Potok** is a self-hosted workflow engine: triggers (cron, webhook, HTTP/RSS
-pollers) start YAML-defined DAGs of steps that call HTTP APIs, send Telegram
-messages, or run your own actions. One Java service plus one PostgreSQL
+pollers) start YAML-defined DAGs of steps that call HTTP APIs, deliver via
+Telegram and email, or run your own actions. One Java service plus one PostgreSQL
 database — the queue, the state, the history and the dedupe all live in
 Postgres, so there is no broker to operate. A built-in dashboard (served from
 the same jar, zero build step) covers editing, version history, executions,
@@ -33,7 +33,7 @@ curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
 
 ## Use cases
 
-Fifteen ready-to-use automations. Pick one in the dashboard (Help →
+Sixteen ready-to-use automations. Pick one in the dashboard (Help →
 Examples), fill a short form — URL, threshold, schedule — hit Preview ▶ to
 see what would happen right now, then Create. Full walkthroughs with sample
 messages: [docs/use-cases.md](docs/use-cases.md).
@@ -43,6 +43,7 @@ messages: [docs/use-cases.md](docs/use-cases.md).
 | Remind me on a schedule (hello-world) | cron | [simple-reminder.yaml](examples/simple-reminder.yaml) |
 | Remind me — and don't let it go | cron + durable `wait` | [follow-up-reminder.yaml](examples/follow-up-reminder.yaml) |
 | Watch a number from any API | poll + jsonpath, edge-triggered | [json-threshold.yaml](examples/json-threshold.yaml) |
+| Email me when a number crosses a line | poll + jsonpath → `email` | [email-alert.yaml](examples/email-alert.yaml) |
 | Ask me before doing it (human-in-the-loop) | webhook + `approval` | [confirm-before-act.yaml](examples/confirm-before-act.yaml) |
 | Get told when a page mentions something | poll + `contains()` | [keyword-on-page.yaml](examples/keyword-on-page.yaml) |
 | Know when a price drops ("249,99 zł" parsed) | poll + css + `number: true` | [price-drop.yaml](examples/price-drop.yaml) |
@@ -76,13 +77,14 @@ flowchart LR
     end
     A1[http action]
     A2[telegram action]
-    A3[your ActionHandler bean]
+    A3[email action]
+    A4[your ActionHandler bean]
 
     CRON --> Q
     HOOK --> Q
     POLL --> Q
     Q -->|FOR UPDATE SKIP LOCKED| W1 & W2
-    W1 & W2 --> A1 & A2 & A3
+    W1 & W2 --> A1 & A2 & A3 & A4
     W1 & W2 --> ST
     UI --- ST
 ```

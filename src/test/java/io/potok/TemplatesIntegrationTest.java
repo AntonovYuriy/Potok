@@ -116,9 +116,9 @@ class TemplatesIntegrationTest extends IntegrationTestBase {
         java.util.List<String> ids = new java.util.ArrayList<>();
         manifest().forEach(entry -> ids.add(entry.path("id").asText()));
         assertThat(ids).containsExactly(
-                "simple-reminder", "follow-up-reminder", "json-threshold", "confirm-before-act",
-                "keyword-on-page", "price-drop", "monthly-payment-reminder", "uptime-monitor",
-                "release-watcher", "rss-digest", "availability-watcher", "price-alert",
-                "ssl-expiry", "github-notify", "garbage-reminder");
+                "simple-reminder", "follow-up-reminder", "json-threshold", "email-alert",
+                "confirm-before-act", "keyword-on-page", "price-drop", "monthly-payment-reminder",
+                "uptime-monitor", "release-watcher", "rss-digest", "availability-watcher",
+                "price-alert", "ssl-expiry", "github-notify", "garbage-reminder");
     }
 }

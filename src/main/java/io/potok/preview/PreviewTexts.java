@@ -97,6 +97,13 @@ final class PreviewTexts {
         return "Would send " + method + " to " + shorten(url) + " (not sent in preview)";
     }
 
+    static String emailSummary(List<Object> recipients, String subject) {
+        String who = recipients.isEmpty() ? "(no recipients)" : String.join(", ",
+                recipients.stream().map(String::valueOf).toList());
+        return "Would send email to " + who + " / subject \"" + subject
+                + "\" (not sent in preview)";
+    }
+
     static String conditionSummary(String kind, String condition, Object currentValue) {
         String current = currentValue == null ? "" : " (current: " + currentValue + ")";
         if ("telegram".equals(kind)) {

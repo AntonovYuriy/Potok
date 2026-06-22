@@ -247,6 +247,10 @@ returns `403`.
 | `POST`   | `/api/tokens` | token² | Mint a token; plaintext shown once |
 | `GET`    | `/api/tokens` | token | List tokens (id, name, created/last-used/revoked) |
 | `DELETE` | `/api/tokens/{id}` | token | Revoke a token |
+| `GET`    | `/api/settings/smtp` | token | SMTP config (no password); `configured`, `password_set`, `source` |
+| `PUT`    | `/api/settings/smtp` | token | Store SMTP config; `password` optional (omit to keep stored) |
+| `DELETE` | `/api/settings/smtp` | token | Clear DB SMTP config (falls back to env) |
+| `POST`   | `/api/settings/smtp/test` | token | Connect + auth only (sends nothing); `{ok, error}` |
 | `POST`   | `/api/admin/purge` | root | Run retention purge now |
 
 ¹ Webhook deliveries are open by design. When `hmac_secret_env` is set on the
@@ -398,6 +402,16 @@ can use either or both.
   (plus `failed`). If `SMTP_HOST` is unset the step fails gracefully with a clear
   message, exactly like `telegram` without a token. See [deploy.md](deploy.md)
   for Gmail (app password) and Brevo/SendGrid setup.
+
+  SMTP can also be set from the dashboard (**Settings → Email (SMTP)**, or
+  `/api/settings/smtp`). The password is stored **AES-256-GCM encrypted at rest**
+  and is **write-only** — `GET` returns `password_set`/`source` but never the
+  secret, and `PUT` keeps the stored password when you omit it. Storing a
+  password needs `POTOK_SECRET_KEY` (base64 32 bytes); without it the API returns
+  `400 set POTOK_SECRET_KEY to store secrets` and env `SMTP_*` still works.
+  Resolution precedence at send time: **complete DB config → `SMTP_*` env → not
+  configured**. `POST /api/settings/smtp/test` connects + authenticates only
+  (sends nothing).
 
 ```yaml
 steps:

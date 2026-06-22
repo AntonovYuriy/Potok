@@ -12,7 +12,7 @@ Telegram and email, or run your own actions. One Java service plus one PostgreSQ
 database — the queue, the state, the history and the dedupe all live in
 Postgres, so there is no broker to operate. A built-in dashboard (served from
 the same jar, zero build step) covers editing, version history, executions,
-the dead letter queue and API tokens.
+the dead letter queue, API tokens and SMTP settings (password encrypted at rest).
 
 ![dashboard demo](docs/demo.gif)
 

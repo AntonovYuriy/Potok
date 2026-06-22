@@ -354,3 +354,14 @@ a.btn { text-decoration: none; display: inline-block; }
     vertical-align: top;
 }
 .markdown-doc th { color: var(--muted); font-weight: 600; }
+
+/* Settings → SMTP form */
+.form-grid { display: flex; flex-direction: column; gap: .65rem; max-width: 34rem; }
+.form-grid label { display: flex; flex-direction: column; gap: .25rem; }
+.form-grid label.row { flex-direction: row; align-items: center; }
+.form-grid input[type="text"], .form-grid input[type="password"],
+.form-grid input[type="number"], .form-grid input:not([type]) {
+    padding: .4rem .55rem; background: var(--surface-2); color: inherit;
+    border: 1px solid var(--border); border-radius: 6px;
+}
+.row { display: flex; }

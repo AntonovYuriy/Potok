@@ -26,4 +26,11 @@ public class ApiExceptionHandler {
         problem.setTitle("Workflow conflict");
         return problem;
     }
+
+    @ExceptionHandler(SmtpSettingsService.SecretKeyMissingException.class)
+    public ProblemDetail secretKeyMissing(SmtpSettingsService.SecretKeyMissingException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setTitle("Secret key not configured");
+        return problem;
+    }
 }

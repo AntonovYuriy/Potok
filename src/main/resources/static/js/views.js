@@ -498,3 +498,110 @@ export async function recipientsView(filter = 'ALL') {
         op(() => api(`/api/recipients/${b.dataset.delete}`, { method: 'DELETE' }),
             () => recipientsView(filter)));
 }
+
+/**
+ * Settings → Email (SMTP). The password is write-only: when one is stored the
+ * UI shows "configured" and a Change toggle; the field is sent only when the
+ * operator types a new one. GET never returns the secret.
+ */
+export async function settingsView() {
+    const cfg = await api('/api/settings/smtp');
+
+    const envBanner = cfg.source === 'env'
+        ? `<div class="card" style="border-color:var(--accent)">
+               Currently using <code>SMTP_*</code> env vars. Saving here overrides them
+               (stored in the database, password encrypted).
+           </div>`
+        : '';
+
+    const passwordField = cfg.password_set
+        ? `<div id="pw-set" class="row" style="align-items:center; gap:0.5rem">
+               <span class="mono muted">●●●● configured</span>
+               <button type="button" id="pw-change">Change</button>
+           </div>
+           <input id="smtp-password" type="password" hidden
+                  placeholder="app password — never shown again">`
+        : `<input id="smtp-password" type="password"
+                  placeholder="app password — never shown again">`;
+
+    view().innerHTML = `<h1>Settings</h1>
+        <h2 style="margin-bottom:0.5rem">Email (SMTP)</h2>
+        <p class="muted" style="margin:0 0 1rem 0">
+            Uses an email account with an app password to <strong>send</strong> notifications
+            (Gmail needs 2FA + an app password). The password is stored <strong>encrypted</strong>
+            and never displayed again. Leaving this empty falls back to the <code>SMTP_*</code> env vars.
+        </p>
+        ${envBanner}
+        <div class="card">
+            <form id="smtp-form" class="form-grid">
+                <label>Host <input id="smtp-host" value="${esc(cfg.host)}" placeholder="smtp.gmail.com"></label>
+                <label>Port <input id="smtp-port" type="number" value="${esc(cfg.port)}"></label>
+                <label>Username <input id="smtp-username" value="${esc(cfg.username)}" placeholder="you@gmail.com"></label>
+                <label>From <input id="smtp-from" value="${esc(cfg.from)}" placeholder="defaults to username"></label>
+                <label class="row" style="gap:0.5rem; align-items:center">
+                    <input id="smtp-starttls" type="checkbox" ${cfg.starttls ? 'checked' : ''}> STARTTLS</label>
+                <label class="row" style="gap:0.5rem; align-items:center">
+                    <input id="smtp-auth" type="checkbox" ${cfg.auth ? 'checked' : ''}> Auth</label>
+                <label>Password ${passwordField}</label>
+                <div class="row" style="gap:0.5rem; margin-top:0.5rem">
+                    <button type="submit">Save</button>
+                    <button type="button" id="smtp-test">Send test</button>
+                    <button type="button" class="danger" id="smtp-clear">Clear</button>
+                </div>
+                <div id="smtp-status" class="muted"></div>
+            </form>
+        </div>`;
+
+    const status = document.getElementById('smtp-status');
+    const setStatus = (msg, ok) => {
+        status.textContent = msg;
+        status.style.color = ok ? 'var(--ok)' : 'var(--fail)';
+    };
+
+    const changeBtn = document.getElementById('pw-change');
+    if (changeBtn) {
+        changeBtn.onclick = () => {
+            document.getElementById('pw-set').hidden = true;
+            const input = document.getElementById('smtp-password');
+            input.hidden = false;
+            input.focus();
+        };
+    }
+
+    document.getElementById('smtp-form').onsubmit = async e => {
+        e.preventDefault();
+        const pw = document.getElementById('smtp-password').value;
+        const body = {
+            host: document.getElementById('smtp-host').value.trim(),
+            port: Number(document.getElementById('smtp-port').value) || 587,
+            username: document.getElementById('smtp-username').value.trim(),
+            from: document.getElementById('smtp-from').value.trim(),
+            starttls: document.getElementById('smtp-starttls').checked,
+            auth: document.getElementById('smtp-auth').checked,
+        };
+        if (pw) body.password = pw; // only send when the operator typed one
+        try {
+            await api('/api/settings/smtp', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            settingsView();
+        } catch (err) {
+            setStatus(err.message, false);
+        }
+    };
+
+    document.getElementById('smtp-test').onclick = async () => {
+        setStatus('Testing…', true);
+        try {
+            const result = await api('/api/settings/smtp/test', { method: 'POST' });
+            setStatus(result.ok ? '✅ SMTP connection OK' : `⚠️ ${result.error}`, result.ok);
+        } catch (err) {
+            setStatus(err.message, false);
+        }
+    };
+
+    document.getElementById('smtp-clear').onclick = () =>
+        op(() => api('/api/settings/smtp', { method: 'DELETE' }), () => settingsView());
+}

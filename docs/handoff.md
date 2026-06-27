@@ -1,8 +1,15 @@
 # Handoff
 
-_Last updated: 2026-06-27 (permanent workflow delete done)._
+_Last updated: 2026-06-27 (M11 done)._
 
 ## Current state
+
+- **M11 done — transparent gzip/deflate response decompression** (2026-06-27, PR #24, squash `7337485`, 315 tests):
+  - **Problem (was diagnosed first).** Java `HttpClient` never auto-decompresses; a response with `Content-Encoding: gzip`/`deflate` reached `output.body` as raw compressed bytes → garbled string → `extract`/conditions/templating saw garbage (status 200, broken body). Real-world trigger: sites/CDNs that gzip even though we never ask.
+  - **Fix — single decoder, `common/HttpBodyDecoder`.** `gzip`/`x-gzip` → `GZIPInputStream`; `deflate` → `Inflater` (zlib, falling back to raw/nowrap); `identity` + unknown encodings pass through **byte-for-byte**; `br` (brotli) → `UnsupportedEncodingException` (no JDK codec / no dep added — fails loudly, never corrupts). `decodeToString` honours the `Content-Type` charset (default UTF-8). **We still do NOT send `Accept-Encoding`** — decompress only when the server compresses anyway → uncompressed responses unchanged (backward compat).
+  - **Wiring.** `HttpActionHandler` now reads `ofByteArray` + decodes (br → step fails with a clear message). That single point fixes the http action AND poll `extract`/conditions/templating (they consume `output.body`). The **rss path** was fixed too — decode before `XmlReader` in **both** `PollerService.pollRss` and `PreviewService.previewRss` — so gzipped feeds parse.
+  - **Brotli limitation (documented):** `Content-Encoding: br` is not supported (no brotli dependency); the http step fails with a clear message rather than corrupting the body. Documented in `reference.json`/README/integration.md.
+  - **Tests:** `HttpBodyDecoderTest` (gzip, deflate zlib + nowrap, identity, unknown→raw, brotli→throws, chained token, charset). `GzipIntegrationTest` (WireMock serving real gzipped bytes): http JSON decompressed+parsed; **css extract on gzipped HTML returns real text — the hdrezka case**; jsonpath `fire_when` over gzipped JSON true; gzipped rss feed parsed; uncompressed unchanged; brotli surfaced. Full suite green (315; lone retry = pre-existing Telegram-ingest port-flake). `integration.md == connect.md`.
 
 - **Permanent workflow delete done** (2026-06-27, PR #23, squash `43c7bc9`, 299 tests):
   - **Hard delete alongside soft-disable.** `DELETE /api/workflows/{id}` is unchanged (soft-disable, history kept); `DELETE /api/workflows/{id}?permanent=true` wipes the workflow **and all its history**. Opt-in flag → backward compatible.

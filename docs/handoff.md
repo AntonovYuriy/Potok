@@ -1,8 +1,14 @@
 # Handoff
 
-_Last updated: 2026-06-27 (M11 done)._
+_Last updated: 2026-06-27 (series-episode template done)._
 
 ## Current state
+
+- **series-episode template done** (2026-06-27, PR #25, squash `32a6f62`, 318 tests):
+  - New gallery template `series-episode-watcher` ("Know when a TV series gets a new episode"): poll a series page → `extract: { css: "title" }` → `fire_when: "changed"`. The page `<title>` carries the latest episode (e.g. "… 1 сезон 8 серия") and changes only for a real new episode, not for a new dub/translation of the same one → per-episode dedupe with **no new engine logic**. Caveat documented (card/use-cases): relies on the site putting the episode in `<title>`; otherwise change the css selector.
+  - Params: `url` (required), `label` (message name, required), `interval` (default `2h`); `default_name` `series-watcher`. Step text uses `{{ trigger.value }}` (the extracted episode) — `poll.value` exists only in the `fire_when` context, not in step templates (the task's draft used `poll.value` in the text; corrected to render a real message).
+  - Placement: watch category, after `availability-watcher`; `galleryIsOrderedBySimplicity` updated. README table + `docs/use-cases.md` (new §12, following sections renumbered) get the human-first entry. Drift-guarded example creates 2xx.
+  - Tests: manifest render+create via the existing harness; `PreviewIntegrationTest.seriesEpisodeTemplateExtractsTitleAndSimulates` (WireMock page with an episode in `<title>` → css extracts it, message simulated). Full suite green (318).
 
 - **M11 done — transparent gzip/deflate response decompression** (2026-06-27, PR #24, squash `7337485`, 315 tests):
   - **Problem (was diagnosed first).** Java `HttpClient` never auto-decompresses; a response with `Content-Encoding: gzip`/`deflate` reached `output.body` as raw compressed bytes → garbled string → `extract`/conditions/templating saw garbage (status 200, broken body). Real-world trigger: sites/CDNs that gzip even though we never ask.

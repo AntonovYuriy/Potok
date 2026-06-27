@@ -1,8 +1,15 @@
 # Handoff
 
-_Last updated: 2026-06-22 (M9 done)._
+_Last updated: 2026-06-27 (permanent workflow delete done)._
 
 ## Current state
+
+- **Permanent workflow delete done** (2026-06-27, PR #23, squash `43c7bc9`, 299 tests):
+  - **Hard delete alongside soft-disable.** `DELETE /api/workflows/{id}` is unchanged (soft-disable, history kept); `DELETE /api/workflows/{id}?permanent=true` wipes the workflow **and all its history**. Opt-in flag → backward compatible.
+  - **Disabled-only guard.** Permanent delete on an enabled workflow → `409` (`WorkflowConflictException`, "must be disabled before it can be permanently deleted"); unknown → `404`; success → `204`. Rationale: a live workflow can't vanish from under a running trigger — the operator disables (reversible) before the irreversible delete.
+  - **Cascade by hand, no migration.** `WorkflowService.deletePermanently` (one `@Transactional`) → `WorkflowRepository.hardDelete` clears the dependent rows whose FKs lack `ON DELETE CASCADE`, in order: `job_queue`/`step_execution`/`dead_letter` (by execution), `workflow_execution`, `workflow_version`, `poll_state`, `rss_seen`, `cron_fire`, then `delete from workflow where id=? and not enabled`. `workflow_subscription` (V12) and `approval` (V9) cascade off their parents. (Future tidy-up option: add `ON DELETE CASCADE` migrations and drop the explicit deletes — deferred to avoid fragile constraint renames.)
+  - **Dashboard.** Disabled workflows show a **Delete** button (confirm dialog) next to Enable → calls `?permanent=true`.
+  - **Tests:** `WorkflowDeletionIntegrationTest` — 409 while enabled; wipes workflow + execution/step/version rows once disabled (GET 404, dropped from list); soft-delete still disables; unknown id 404. Full suite green (299; lone retry = pre-existing Telegram-ingest port-flake). `integration.md == connect.md`.
 
 - **M9 done — SMTP settings in the dashboard (write-only encrypted secret)** (2026-06-22, PR #22, squash `1508676`, 294 tests):
   - **Goal:** configure the sending SMTP account from the dashboard; the app-password is **write-only** (set/updated, never returned to the UI). Env `SMTP_*` stays a fallback — existing Render/Koyeb deployments unchanged.

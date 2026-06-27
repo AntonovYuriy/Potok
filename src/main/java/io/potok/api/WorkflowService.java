@@ -88,6 +88,27 @@ public class WorkflowService {
         return disabled;
     }
 
+    public enum DeleteResult { NOT_FOUND, ENABLED, DELETED }
+
+    /**
+     * Hard delete — wipes the workflow and all its history. Refuses unless the
+     * workflow is already disabled, so a live workflow can never vanish from
+     * under a running trigger.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResult deletePermanently(UUID id) {
+        Optional<Workflow> workflow = workflows.findById(id);
+        if (workflow.isEmpty()) {
+            return DeleteResult.NOT_FOUND;
+        }
+        if (workflow.get().enabled()) {
+            return DeleteResult.ENABLED;
+        }
+        workflows.hardDelete(id);
+        events.publishEvent(new WorkflowsChangedEvent());
+        return DeleteResult.DELETED;
+    }
+
     public Optional<Workflow> enable(UUID id) {
         try {
             Optional<Workflow> enabled = workflows.enable(id);

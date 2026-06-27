@@ -97,6 +97,30 @@ public class WorkflowRepository {
                 .optional();
     }
 
+    /**
+     * Hard delete: removes the workflow and all its dependent rows. Only fires
+     * when the workflow is already disabled (the {@code not enabled} guard).
+     * Children whose FKs lack ON DELETE CASCADE are cleared explicitly, in
+     * dependency order, inside the caller's transaction.
+     *
+     * @return true when the workflow row was deleted
+     */
+    public boolean hardDelete(UUID id) {
+        String executions = "(select id from workflow_execution where workflow_id = :id)";
+        jdbc.sql("delete from job_queue where execution_id in " + executions).param("id", id).update();
+        jdbc.sql("delete from step_execution where execution_id in " + executions).param("id", id).update();
+        jdbc.sql("delete from dead_letter where execution_id in " + executions).param("id", id).update();
+        // approval rows cascade off workflow_execution; subscriptions cascade off workflow
+        jdbc.sql("delete from workflow_execution where workflow_id = :id").param("id", id).update();
+        jdbc.sql("delete from workflow_version where workflow_id = :id").param("id", id).update();
+        jdbc.sql("delete from poll_state where workflow_id = :id").param("id", id).update();
+        jdbc.sql("delete from rss_seen where workflow_id = :id").param("id", id).update();
+        jdbc.sql("delete from cron_fire where workflow_id = :id").param("id", id).update();
+        return jdbc.sql("delete from workflow where id = :id and not enabled")
+                .param("id", id)
+                .update() > 0;
+    }
+
     public Optional<Workflow> findById(UUID id) {
         return jdbc.sql("select * from workflow where id = :id")
                 .param("id", id)

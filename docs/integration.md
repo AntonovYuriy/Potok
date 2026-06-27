@@ -232,7 +232,7 @@ returns `403`.
 | `GET`    | `/api/workflows` | token | List workflows (enabled and disabled) |
 | `GET`    | `/api/workflows/{id}` | token | Workflow detail (definition + YAML + current version) |
 | `PUT`    | `/api/workflows/{id}` | token | Update; appends a new version, re-enables |
-| `DELETE` | `/api/workflows/{id}` | token | Soft-disable (history kept) |
+| `DELETE` | `/api/workflows/{id}` | token | Soft-disable (history kept); `?permanent=true` hard-deletes it + all history (must be disabled first, else `409`) |
 | `POST`   | `/api/workflows/{id}/enable` | token | Re-enable a disabled workflow |
 | `POST`   | `/api/workflows/{id}/run` | token | Manual run (returns `202` with `executionId`) |
 | `GET`    | `/api/workflows/{id}/versions?page=&size=` | token | Paged version history |

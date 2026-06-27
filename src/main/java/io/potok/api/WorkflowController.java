@@ -67,10 +67,26 @@ public class WorkflowController {
                 .orElseThrow(() -> notFound(id));
     }
 
+    /**
+     * Default (soft) delete disables the workflow, keeping its history.
+     * {@code ?permanent=true} hard-deletes it and all its history — allowed
+     * only when the workflow is already disabled (409 otherwise).
+     */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> disable(@PathVariable UUID id) {
-        if (!workflowService.disable(id)) {
-            throw notFound(id);
+    public ResponseEntity<Void> delete(
+            @PathVariable UUID id,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "false") boolean permanent) {
+        if (!permanent) {
+            if (!workflowService.disable(id)) {
+                throw notFound(id);
+            }
+            return ResponseEntity.noContent().build();
+        }
+        switch (workflowService.deletePermanently(id)) {
+            case NOT_FOUND -> throw notFound(id);
+            case ENABLED -> throw new WorkflowConflictException(
+                    "workflow must be disabled before it can be permanently deleted");
+            case DELETED -> { /* fall through to 204 */ }
         }
         return ResponseEntity.noContent().build();
     }

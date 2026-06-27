@@ -55,7 +55,8 @@ export async function workflowList() {
                 <button data-run="${w.id}" ${w.enabled ? '' : 'disabled'}>Run</button>
                 ${w.enabled
                     ? `<button class="danger" data-disable="${w.id}">Disable</button>`
-                    : `<button data-enable="${w.id}">Enable</button>`}
+                    : `<button data-enable="${w.id}">Enable</button>
+                       <button class="danger" data-delete="${w.id}" data-name="${esc(w.name)}">Delete</button>`}
             </td>
         </tr>`;
     }).join('');
@@ -74,6 +75,12 @@ export async function workflowList() {
         op(() => api(`/api/workflows/${b.dataset.disable}`, { method: 'DELETE' }), workflowList));
     view().querySelectorAll('[data-enable]').forEach(b => b.onclick = () =>
         op(() => api(`/api/workflows/${b.dataset.enable}/enable`, { method: 'POST' }), workflowList));
+    view().querySelectorAll('[data-delete]').forEach(b => b.onclick = () => {
+        if (!confirm(`Permanently delete "${b.dataset.name}" and all its history? This cannot be undone.`)) {
+            return;
+        }
+        op(() => api(`/api/workflows/${b.dataset.delete}?permanent=true`, { method: 'DELETE' }), workflowList);
+    });
 }
 
 export async function workflowDetail(id, page = 0) {

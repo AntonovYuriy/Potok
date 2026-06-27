@@ -447,3 +447,8 @@ message (Telegram text, or email recipients + subject + body) and reports what
   want to call internal services. The check is on the initial URL only; a
   redirect chain is not re-checked.
 - Webhook signature comparison and `X-API-Key` comparison are both constant-time.
+- `http` responses (and rss feeds) with `Content-Encoding: gzip`/`deflate` are
+  **transparently decompressed** before the body reaches templating, `extract`,
+  or conditions — a server that compresses anyway no longer yields garbage.
+  Brotli (`br`) has no codec; Potok fails the step with a clear error instead of
+  corrupting the body. Potok does not send `Accept-Encoding`.

@@ -141,7 +141,9 @@ public class PollerService {
                 log.warn("rss_poll_failed workflow={} status={}", workflow.name(), response.statusCode());
                 return;
             }
-            feed = new SyndFeedInput().build(new XmlReader(new java.io.ByteArrayInputStream(response.body())));
+            byte[] body = io.potok.common.HttpBodyDecoder.decode(
+                    response.headers().firstValue("content-encoding").orElse(null), response.body());
+            feed = new SyndFeedInput().build(new XmlReader(new java.io.ByteArrayInputStream(body)));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return;

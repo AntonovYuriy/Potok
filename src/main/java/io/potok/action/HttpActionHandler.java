@@ -83,11 +83,18 @@ public class HttpActionHandler implements ActionHandler {
         }
 
         try {
-            HttpResponse<String> response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<byte[]> response = client.send(request.build(), HttpResponse.BodyHandlers.ofByteArray());
+            String text;
+            try {
+                // transparent gzip/deflate decompression (Java HttpClient does not auto-decode)
+                text = io.potok.common.HttpBodyDecoder.decodeToString(response.headers(), response.body());
+            } catch (io.potok.common.HttpBodyDecoder.UnsupportedEncodingException e) {
+                return StepResult.fail("http " + method + " " + url + ": " + e.getMessage());
+            }
             Map<String, Object> output = new LinkedHashMap<>();
             output.put("status", response.statusCode());
             output.put("headers", firstValueHeaders(response));
-            output.put("body", parseBody(response.body()));
+            output.put("body", parseBody(text));
             boolean failOnStatus = !Boolean.FALSE.equals(
                     ctx.with() == null ? null : ctx.with().get("fail_on_status"));
             if (!failOnStatus || (response.statusCode() >= 200 && response.statusCode() < 300)) {
@@ -117,7 +124,7 @@ public class HttpActionHandler implements ActionHandler {
         return body;
     }
 
-    private static Map<String, String> firstValueHeaders(HttpResponse<String> response) {
+    private static Map<String, String> firstValueHeaders(HttpResponse<?> response) {
         Map<String, String> headers = new LinkedHashMap<>();
         response.headers().map().forEach((name, values) -> {
             if (!name.startsWith(":") && !values.isEmpty()) {

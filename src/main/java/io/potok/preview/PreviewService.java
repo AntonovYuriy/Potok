@@ -213,8 +213,10 @@ public class PreviewService {
                     HttpRequest.newBuilder().uri(URI.create(rss.url()))
                             .timeout(Duration.ofMillis(remaining)).GET().build(),
                     HttpResponse.BodyHandlers.ofByteArray());
+            byte[] feedBytes = io.potok.common.HttpBodyDecoder.decode(
+                    response.headers().firstValue("content-encoding").orElse(null), response.body());
             SyndFeed feed = new SyndFeedInput()
-                    .build(new XmlReader(new java.io.ByteArrayInputStream(response.body())));
+                    .build(new XmlReader(new java.io.ByteArrayInputStream(feedBytes)));
             if (feed.getEntries().isEmpty()) {
                 return new TriggerContext(new TriggerPreview("rss", note,
                         "Feed fetched, but it has no items yet", null), Map.of());

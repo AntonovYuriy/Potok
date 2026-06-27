@@ -252,6 +252,29 @@ class PreviewIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void seriesEpisodeTemplateExtractsTitleAndSimulates() throws Exception {
+        WIRE_MOCK.stubFor(get("/series").willReturn(ok(
+                "<html><head><title>Ранчо Дзаттонов (1 сезон 8 серия) смотреть онлайн</title></head>"
+                        + "<body>player</body></html>")));
+
+        Map<String, Object> result = preview(renderTemplate("series-episode-watcher", Map.of(
+                "name", "pv-series", "url", WIRE_MOCK.baseUrl() + "/series",
+                "label", "Rancho Dattonov", "interval", "2h")));
+
+        Map<String, Object> trigger = trigger(result);
+        // css "title" pulls the episode out of the page <title>; changed-mode baseline
+        assertThat((String) trigger.get("human_summary"))
+                .contains("element found").contains("1 сезон 8 серия");
+        assertThat((String) trigger.get("note")).contains("CHANGES");
+
+        Map<String, Object> notify = steps(result).get(0);
+        assertThat(notify.get("mode")).isEqualTo("simulated");
+        assertThat((String) notify.get("human_summary"))
+                .contains("Rancho Dattonov").contains("new episode").contains("1 сезон 8 серия");
+        WIRE_MOCK.verify(0, postRequestedFor(urlPathMatching("/bot.*/sendMessage")));
+    }
+
+    @Test
     void jsonThresholdTemplatePreviewsAgainstLiveData() throws Exception {
         WIRE_MOCK.stubFor(get("/rates").willReturn(okJson("{\"rates\":[{\"mid\": 4.42}]}")));
 

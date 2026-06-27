@@ -1,6 +1,6 @@
 # Use cases
 
-Fifteen real automations, each a single YAML file from [examples/](../examples).
+Sixteen real automations, each a single YAML file from [examples/](../examples).
 The easy way: dashboard → Help → Examples → pick a card → fill the short form
 (Preview ▶ shows what would happen right now before you commit). The curl way:
 `curl -H 'Content-Type: text/plain' --data-binary @examples/<file> host/api/workflows`.
@@ -277,7 +277,34 @@ steps:
 
 > 👀 The page changed: In stock — https://shop.example.com/product/123
 
-## 12. Buy euros when they're cheap
+## 12. Know when a TV series gets a new episode
+
+Watches a series page and pings you once per new episode. It extracts the page
+`<title>`, which usually carries the latest episode (e.g. "… 1 сезон 8 серия"),
+and fires when that text **changes**. A new dub or translation of the *same*
+episode doesn't change the title — so you get one message per episode, not one
+per translation. If a site doesn't put the episode in `<title>`, point the css
+selector at the element that does.
+
+```yaml
+name: series-watcher
+trigger:
+  poll:
+    interval: 2h
+    http: { method: GET, url: "https://example.com/series/1.html" }
+    extract: { css: "title" }
+    fire_when: "changed"
+steps:
+  - name: notify
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "📺 Rancho Dattonov — new episode: {{ trigger.value }}"
+```
+
+> 📺 Rancho Dattonov — new episode: Ранчо Дзаттонов (1 сезон 8 серия) смотреть онлайн
+
+## 13. Buy euros when they're cheap
 
 The Polish central bank publishes the official mid rate daily, as free JSON.
 Edge-triggered: one alert when the rate dips under your threshold, no repeats
@@ -301,7 +328,7 @@ steps:
 
 > 💶 EUR is at 4.1850 — below your 4.20 threshold, good time to exchange
 
-## 13. Renew certificates before they expire
+## 14. Renew certificates before they expire
 
 An expired certificate takes your site down with a scary browser warning — and
 it always happens on a weekend. The `ssl_check` handler reads the served
@@ -329,7 +356,7 @@ steps:
 
 > 🔒 Certificate for example.com expires in 13 days (2026-06-25T12:00:00Z)
 
-## 14. See repo pushes in Telegram (signed webhook)
+## 15. See repo pushes in Telegram (signed webhook)
 
 Every push becomes a chat message: who pushed and what. The webhook is
 HMAC-verified (GitHub's X-Hub-Signature-256 over the raw body), so nobody can
@@ -352,7 +379,7 @@ steps:
 
 > ⬆️ yura -> AntonovYuriy/Potok: fix: validate conditions at create time
 
-## 15. Remember to put the bins out (Warsaw)
+## 16. Remember to put the bins out (Warsaw)
 
 The schedule is a PDF on a city website and every fraction has its own day.
 This asks the official warszawa19115.pl API every morning and messages you

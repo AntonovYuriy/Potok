@@ -1,0 +1,21 @@
+# Watches a series page and pings you ONCE per new episode. It reads the page
+# <title>, which usually carries the latest episode (e.g. "... 1 сезон 8 серия"),
+# and fires when that text CHANGES. A new dub or translation of the SAME episode
+# doesn't change the title → no spam, one message per episode. If a site doesn't
+# put the episode in <title>, change the css selector to the element that does.
+name: series-watcher
+trigger:
+  poll:
+    interval: 2h
+    http:
+      method: GET
+      url: "https://example.com/series/1.html"
+    extract:
+      css: "title"
+    fire_when: "changed"
+steps:
+  - name: notify
+    action: telegram
+    with:
+      chat_id: "${TELEGRAM_CHAT_ID}"
+      text: "📺 My Series — new episode: {{ trigger.value }}"

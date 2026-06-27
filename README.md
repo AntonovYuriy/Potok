@@ -34,7 +34,7 @@ curl -s -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
 
 ## Use cases
 
-Seventeen ready-to-use automations. Pick one in the dashboard (Help →
+Eighteen ready-to-use automations. Pick one in the dashboard (Help →
 Examples), fill a short form — URL, threshold, schedule — hit Preview ▶ to
 see what would happen right now, then Create. Full walkthroughs with sample
 messages: [docs/use-cases.md](docs/use-cases.md).
@@ -54,6 +54,7 @@ messages: [docs/use-cases.md](docs/use-cases.md).
 | Know when a project ships a new release | rss (GitHub releases.atom) | [release-watcher.yaml](examples/release-watcher.yaml) |
 | Follow a feed in Telegram | rss, per-item dedupe | [rss-digest.yaml](examples/rss-digest.yaml) |
 | Know the moment a page changes | poll + css extract | [availability-watcher.yaml](examples/availability-watcher.yaml) |
+| Know when a TV series gets a new episode | poll + css `<title>`, edge-triggered | [series-episode-watcher.yaml](examples/series-episode-watcher.yaml) |
 | Buy euros when they're cheap (NBP) | poll + jsonpath, edge-triggered | [price-alert.yaml](examples/price-alert.yaml) |
 | Renew certificates before they expire | cron + `ssl_check` | [ssl-expiry.yaml](examples/ssl-expiry.yaml) |
 | See repo pushes in Telegram | signed webhook (HMAC) | [github-notify.yaml](examples/github-notify.yaml) |

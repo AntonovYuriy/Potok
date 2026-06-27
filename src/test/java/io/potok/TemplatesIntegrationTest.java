@@ -119,7 +119,7 @@ class TemplatesIntegrationTest extends IntegrationTestBase {
                 "simple-reminder", "follow-up-reminder", "json-threshold", "email-alert",
                 "multi-channel-alert", "confirm-before-act", "keyword-on-page", "price-drop",
                 "monthly-payment-reminder", "uptime-monitor", "release-watcher", "rss-digest",
-                "availability-watcher", "price-alert", "ssl-expiry", "github-notify",
-                "garbage-reminder");
+                "availability-watcher", "series-episode-watcher", "price-alert", "ssl-expiry",
+                "github-notify", "garbage-reminder");
     }
 }

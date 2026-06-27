@@ -735,6 +735,54 @@
     ]
   },
   {
+    "id": "series-episode-watcher",
+    "title": "Know when a TV series gets a new episode",
+    "problem": "Watches a series page and messages you once when a new episode appears. Different dubs or translations of the same episode won't spam you — you get one message per episode. It reads the page title, which carries the latest episode and only changes when a real new one shows up.",
+    "trigger": "watches a page",
+    "actions": [
+      "telegram"
+    ],
+    "file": "series-episode-watcher.yaml",
+    "sample": "📺 Rancho Dattonov — new episode: Ранчо Дзаттонов (1 сезон 8 серия) смотреть онлайн",
+    "default_name": "series-watcher",
+    "params": [
+      {
+        "key": "url",
+        "label": "Series page",
+        "type": "url",
+        "required": true,
+        "default": "https://example.com/series/1.html",
+        "example": "https://hdrezka-home.tv/series/.../...html",
+        "help": "The series page URL"
+      },
+      {
+        "key": "label",
+        "label": "Series name",
+        "type": "string",
+        "required": true,
+        "default": "My Series",
+        "example": "Rancho Dattonov",
+        "help": "Name shown in the message"
+      },
+      {
+        "key": "interval",
+        "label": "Check every",
+        "type": "duration",
+        "required": true,
+        "default": "2h",
+        "example": "1h",
+        "help": "How often to check"
+      },
+      {
+        "key": "chat",
+        "label": "Telegram chat",
+        "type": "env",
+        "env": "TELEGRAM_CHAT_ID",
+        "help": "uses ${TELEGRAM_CHAT_ID} from server env"
+      }
+    ]
+  },
+  {
     "id": "price-alert",
     "title": "Buy euros when they're cheap",
     "problem": "The Polish central bank publishes the official exchange rate every day, for free. Set the rate you're waiting for and get one message when the euro dips under it.",

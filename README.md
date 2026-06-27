@@ -7,8 +7,9 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
 
 **Potok** is a self-hosted workflow engine: triggers (cron, webhook, HTTP/RSS
-pollers) start YAML-defined DAGs of steps that call HTTP APIs, deliver via
-Telegram and email, or run your own actions. One Java service plus one PostgreSQL
+pollers) start YAML-defined DAGs of steps that call HTTP APIs (gzip/deflate
+responses are transparently decompressed), deliver via Telegram and email, or
+run your own actions. One Java service plus one PostgreSQL
 database — the queue, the state, the history and the dedupe all live in
 Postgres, so there is no broker to operate. A built-in dashboard (served from
 the same jar, zero build step) covers editing, version history, executions,

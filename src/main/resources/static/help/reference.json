@@ -75,7 +75,7 @@
     {
       "name": "http",
       "params": "method, url, headers, body, fail_on_status",
-      "output": "{status, headers, body} — body parsed as JSON when possible; fail_on_status: false records non-2xx as success"
+      "output": "{status, headers, body} — body parsed as JSON when possible; fail_on_status: false records non-2xx as success. gzip/deflate responses are transparently decompressed before body/extract/templating see them (brotli 'br' is not supported and fails with a clear error rather than corrupting the body)"
     },
     {
       "name": "telegram",

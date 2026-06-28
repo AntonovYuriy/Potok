@@ -1,8 +1,13 @@
 # Handoff
 
-_Last updated: 2026-06-27 (series-episode template done)._
+_Last updated: 2026-06-28 (poll null-guard fix done)._
 
 ## Current state
+
+- **poll null-guard fix done** (2026-06-28, PR #26, squash `be719ea`, 319 tests):
+  - **Bug:** a poll whose fetch errored (e.g. Binance **418** rate-limit) or whose `extract` path was absent yielded `value=null`. `TemplateResolver.compare` sorted null **lowest**, so a numeric `fire_when` like `value < 59111` treated null as below the threshold → **false alert with an empty value**.
+  - **Fix — two layered guards.** (1) `TemplateResolver.evaluateComparison`: relational ops (`<` `>` `<=` `>=`) with a null operand now return **FALSE** (a missing value is "unknown", never below/above a line); `==` stays false vs null, `!=` stays true. (2) `PollerService.pollHttp`: a **non-2xx** response is a failed fetch, not data → skip the tick, keep last good state, no fire (`fail_on_status` stays off only so the poller can read the status); a **null extracted value** → skip the tick too. So an outage or a missing path can't fire a threshold OR count as a "changed" value → no alert storms on errors. Skips are logged (`poll_skipped_status` / `poll_skipped_null_extract`). Preview is covered by the resolver guard (shows "NOT met" on null).
+  - **Tests:** unit — relational ops with a missing value → false (`TemplateResolverTest.relationalComparisonWithMissingValueIsFalse`). Integration — `nullAndErrorTicksNeverFireThenRecovers` (418 → null-extract → above-threshold all silent, then a real value below fires exactly once) and `changedModeIgnoresNullAndErrorTicks` (500/null ticks are not a "change"; only a real new value fires). Full suite green (319; lone retry = pre-existing Telegram-ingest port-flake).
 
 - **series-episode template done** (2026-06-27, PR #25, squash `32a6f62`, 318 tests):
   - New gallery template `series-episode-watcher` ("Know when a TV series gets a new episode"): poll a series page → `extract: { css: "title" }` → `fire_when: "changed"`. The page `<title>` carries the latest episode (e.g. "… 1 сезон 8 серия") and changes only for a real new episode, not for a new dub/translation of the same one → per-episode dedupe with **no new engine logic**. Caveat documented (card/use-cases): relies on the site putting the episode in `<title>`; otherwise change the css selector.

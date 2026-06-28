@@ -36,6 +36,91 @@ class PollerIntegrationTest extends IntegrationTestBase {
         return (String) created.getBody().get("id");
     }
 
+    private String createPollWithExtract(String name, String path, String jsonpath, String fireWhen) {
+        var created = postYaml("/api/workflows", """
+                name: %s
+                trigger:
+                  poll:
+                    interval: 300ms
+                    http: { method: GET, url: "%s%s" }
+                    extract: { jsonpath: "%s" }
+                    fire_when: "%s"
+                steps:
+                  - { name: noop, action: http, with: { url: "%s/ok", fail_on_status: false } }
+                """.formatted(name, WIRE_MOCK.baseUrl(), path, jsonpath, fireWhen, WIRE_MOCK.baseUrl()));
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return (String) created.getBody().get("id");
+    }
+
+    @Test
+    void nullAndErrorTicksNeverFireThenRecovers() throws Exception {
+        WIRE_MOCK.stubFor(get(urlEqualTo("/ok")).willReturn(aResponse().withStatus(200)));
+        // rate-limited (418): body has no price → must NOT be read as a value
+        WIRE_MOCK.stubFor(get(urlEqualTo("/binance"))
+                .willReturn(aResponse().withStatus(418).withBody("{\"code\": -1003}")));
+
+        String workflowId = createPollWithExtract(
+                "poll-null", "/binance", "$.price", "{{ poll.value < 59111 }}");
+
+        Thread.sleep(1500);
+        assertThat(executionsOf(workflowId)).as("418 must not fire").isEmpty();
+
+        // 200 but the path is absent → extracted null → skip, no fire
+        WIRE_MOCK.stubFor(get(urlEqualTo("/binance"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"other\": 1}")));
+        Thread.sleep(1200);
+        assertThat(executionsOf(workflowId)).as("null extract must not fire").isEmpty();
+
+        // 200 with a real value ABOVE the threshold → condition false, no fire
+        WIRE_MOCK.stubFor(get(urlEqualTo("/binance"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"price\": \"60000\"}")));
+        Thread.sleep(1200);
+        assertThat(executionsOf(workflowId)).as("above threshold must not fire").isEmpty();
+
+        // 200 with a value BELOW the threshold → fires exactly once (false→true edge)
+        WIRE_MOCK.stubFor(get(urlEqualTo("/binance"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"price\": \"58000\"}")));
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(executionsOf(workflowId)).hasSize(1));
+
+        // stays below: edge already fired, no refire
+        Thread.sleep(1200);
+        assertThat(executionsOf(workflowId)).hasSize(1);
+    }
+
+    @Test
+    void changedModeIgnoresNullAndErrorTicks() throws Exception {
+        WIRE_MOCK.stubFor(get(urlEqualTo("/ok")).willReturn(aResponse().withStatus(200)));
+        WIRE_MOCK.stubFor(get(urlEqualTo("/feed"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"price\": \"100\"}")));
+
+        String workflowId = createPollWithExtract("poll-changed-null", "/feed", "$.price", "changed");
+
+        Thread.sleep(1200); // baseline value 100
+        assertThat(executionsOf(workflowId)).isEmpty();
+
+        // an outage (500) then a 200 missing the path must NOT count as "changed"
+        WIRE_MOCK.stubFor(get(urlEqualTo("/feed"))
+                .willReturn(aResponse().withStatus(500).withBody("boom")));
+        Thread.sleep(900);
+        WIRE_MOCK.stubFor(get(urlEqualTo("/feed"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"nope\": 1}")));
+        Thread.sleep(900);
+        assertThat(executionsOf(workflowId)).as("error/null ticks are not a change").isEmpty();
+
+        // back to the SAME value: still no change
+        WIRE_MOCK.stubFor(get(urlEqualTo("/feed"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"price\": \"100\"}")));
+        Thread.sleep(900);
+        assertThat(executionsOf(workflowId)).isEmpty();
+
+        // a real new value → fires once
+        WIRE_MOCK.stubFor(get(urlEqualTo("/feed"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"price\": \"200\"}")));
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(executionsOf(workflowId)).hasSize(1));
+    }
+
     @Test
     void changedModeFiresOnBodyChangeOnly() throws Exception {
         WIRE_MOCK.stubFor(get(urlEqualTo("/ok")).willReturn(aResponse().withStatus(200)));

@@ -79,6 +79,16 @@ public class PollerService {
         }
 
         Map<String, Object> response = result.output();
+
+        // A non-2xx response is a failed fetch (rate-limit 418, 5xx, …), not data:
+        // fail_on_status is off so the poller can read it, but we must not treat an
+        // error page as a value. Skip the tick, keep the last good state, no fire.
+        int status = response.get("status") instanceof Number n ? n.intValue() : 0;
+        if (status < 200 || status >= 300) {
+            log.info("poll_skipped_status workflow={} status={}", workflow.name(), status);
+            return;
+        }
+
         Object body = response.get("body");
 
         // with extract: noise in the rest of the body (timestamps, ads) is invisible
@@ -88,6 +98,12 @@ public class PollerService {
         if (poll.extract() != null) {
             extracted = PollExtractor.extract(poll.extract(), body,
                     body instanceof String s ? s : null);
+            // Absent value = "unknown", never a signal. Skip the tick so a missing
+            // path doesn't fire a numeric threshold or count as a "changed" value.
+            if (extracted == null) {
+                log.info("poll_skipped_null_extract workflow={}", workflow.name());
+                return;
+            }
             context.put("value", extracted);
             hashBasis = json.write(extracted);
         } else {

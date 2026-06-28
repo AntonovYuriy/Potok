@@ -223,6 +223,12 @@ public class TemplateResolver {
             if (at >= 0) {
                 Object left = operand(expr.substring(0, at), context);
                 Object right = operand(expr.substring(at + op.length()), context);
+                // A missing operand is "unknown", never below/above a threshold: relational
+                // comparisons with a null side are FALSE so an absent poll value can't fire.
+                boolean relational = !op.equals("==") && !op.equals("!=");
+                if (relational && (left == null || right == null)) {
+                    return false;
+                }
                 return switch (op) {
                     case "==" -> valuesEqual(left, right);
                     case "!=" -> !valuesEqual(left, right);

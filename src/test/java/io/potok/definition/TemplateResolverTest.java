@@ -75,6 +75,20 @@ class TemplateResolverTest {
     }
 
     @Test
+    void relationalComparisonWithMissingValueIsFalse() {
+        // a missing/absent value is "unknown", never below/above a threshold → no fire
+        assertThat(resolver.evaluateCondition("{{ trigger.missing < 59111 }}", context)).isFalse();
+        assertThat(resolver.evaluateCondition("{{ trigger.missing > 59111 }}", context)).isFalse();
+        assertThat(resolver.evaluateCondition("{{ trigger.missing <= 59111 }}", context)).isFalse();
+        assertThat(resolver.evaluateCondition("{{ trigger.missing >= 59111 }}", context)).isFalse();
+        // null on either side
+        assertThat(resolver.evaluateCondition("{{ 59111 > trigger.missing }}", context)).isFalse();
+        // numeric equality with a missing value is false; inequality stays true
+        assertThat(resolver.evaluateCondition("{{ trigger.missing == 59111 }}", context)).isFalse();
+        assertThat(resolver.evaluateCondition("{{ trigger.missing != 59111 }}", context)).isTrue();
+    }
+
+    @Test
     void evaluatesInequality() {
         assertThat(resolver.evaluateCondition("{{ steps.fetch.status != 500 }}", context)).isTrue();
         assertThat(resolver.evaluateCondition("{{ steps.fetch.status != 200 }}", context)).isFalse();

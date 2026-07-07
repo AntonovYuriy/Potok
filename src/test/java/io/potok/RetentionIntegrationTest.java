@@ -22,6 +22,8 @@ class RetentionIntegrationTest extends IntegrationTestBase {
     RetentionPurger purger;
     @Autowired
     JdbcClient jdbc;
+    @Autowired
+    io.potok.trigger.PollStateRepository pollState;
 
     private String runToCompletion(String name, String path, boolean fail) {
         WIRE_MOCK.stubFor(get(urlEqualTo("/" + path))
@@ -78,5 +80,46 @@ class RetentionIntegrationTest extends IntegrationTestBase {
         // default retention window: cutoff 30 days back
         assertThat(purger.cutoff(java.time.OffsetDateTime.now()))
                 .isBefore(java.time.OffsetDateTime.now().minusDays(29));
+    }
+
+    private String createWorkflow(String name, String path) {
+        var created = postYaml("/api/workflows", """
+                name: %s
+                trigger:
+                  webhook: { path: "%s" }
+                steps:
+                  - { name: noop, action: http, with: { url: "http://example.invalid", fail_on_status: false } }
+                """.formatted(name, path));
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return (String) created.getBody().get("id");
+    }
+
+    private void insertRssSeen(String workflowId, String itemId, int ageDays) {
+        jdbc.sql("""
+                        insert into rss_seen (workflow_id, item_id, seen_at)
+                        values (:id::uuid, :item, now() - make_interval(days => :days))
+                        """)
+                .param("id", workflowId).param("item", itemId).param("days", ageDays)
+                .update();
+    }
+
+    private long rssSeenCount(String workflowId, String itemId) {
+        return jdbc.sql("select count(*) from rss_seen where workflow_id = :id::uuid and item_id = :item")
+                .param("id", workflowId).param("item", itemId).query(Long.class).single();
+    }
+
+    @Test
+    void purgeRemovesOldRssSeenKeepsRecentDedupeStillWorks() {
+        String workflowId = createWorkflow("ret-rss", "ret-rss");
+        java.util.UUID id = java.util.UUID.fromString(workflowId);
+        insertRssSeen(workflowId, "old-item", 45);    // well past the 30d window
+        insertRssSeen(workflowId, "recent-item", 1);  // inside the window
+
+        purger.purge();
+
+        assertThat(rssSeenCount(workflowId, "old-item")).as("old dedupe row purged").isZero();
+        assertThat(rssSeenCount(workflowId, "recent-item")).as("recent kept").isEqualTo(1);
+        // dedupe still works: the kept item is still "seen" (markSeen returns false = not new)
+        assertThat(pollState.markSeen(id, "recent-item")).isFalse();
     }
 }

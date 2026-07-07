@@ -12,8 +12,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** With POTOK_API_KEY set: /api/** needs the key, /api/meta, /hooks and actuator stay open. */
+/** With POTOK_API_KEY set: /api/** + metrics/info need the key; /api/meta, /hooks, health stay open. */
 @TestPropertySource(properties = "potok.api-key=secret-key-123")
+@org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability
 class AuthIntegrationTest extends IntegrationTestBase {
 
     private ResponseEntity<Map<String, Object>> get(String url, String apiKey) {
@@ -54,5 +55,20 @@ class AuthIntegrationTest extends IntegrationTestBase {
         // dashboard assets stay open
         assertThat(rest.getForEntity("/", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(rest.getForEntity("/js/app.js", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void metricsAndInfoNeedKeyButHealthStaysOpen() {
+        // health probes stay open for uptime pingers…
+        assertThat(get("/actuator/health", null).getStatusCode()).isEqualTo(HttpStatus.OK);
+        // …but metrics and build-info are guarded (operational intelligence)
+        assertThat(get("/actuator/prometheus", null).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(get("/actuator/info", null).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        HttpHeaders good = new HttpHeaders();
+        good.set("X-API-Key", "secret-key-123");
+        assertThat(rest.exchange("/actuator/prometheus", HttpMethod.GET,
+                        new HttpEntity<>(good), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
     }
 }

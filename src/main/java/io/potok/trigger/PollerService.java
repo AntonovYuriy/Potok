@@ -8,6 +8,7 @@ import io.potok.action.HttpActionHandler;
 import io.potok.action.StepContext;
 import io.potok.action.StepResult;
 import io.potok.common.Json;
+import io.potok.common.UrlGuard;
 import io.potok.definition.TemplateResolver;
 import io.potok.definition.Workflow;
 import io.potok.definition.WorkflowDefinition;
@@ -50,16 +51,18 @@ public class PollerService {
             .build();
 
     private final TriggerLocks locks;
+    private final UrlGuard urlGuard;
 
     public PollerService(HttpActionHandler http, PollStateRepository state,
                          ExecutionService executions, TemplateResolver templates, Json json,
-                         TriggerLocks locks) {
+                         TriggerLocks locks, UrlGuard urlGuard) {
         this.http = http;
         this.state = state;
         this.executions = executions;
         this.templates = templates;
         this.json = json;
         this.locks = locks;
+        this.urlGuard = urlGuard;
     }
 
     @Transactional
@@ -149,6 +152,9 @@ public class PollerService {
         WorkflowDefinition.Rss rss = workflow.definition().trigger().rss();
         SyndFeed feed;
         try {
+            // Same SSRF guard the http action and preview enforce: refuse a feed URL
+            // that resolves to a private/internal/metadata address (honors POTOK_ALLOW_PRIVATE_URLS).
+            urlGuard.check(rss.url());
             HttpResponse<byte[]> response = rssClient.send(
                     HttpRequest.newBuilder().uri(URI.create(rss.url()))
                             .timeout(Duration.ofSeconds(30)).GET().build(),
@@ -160,6 +166,9 @@ public class PollerService {
             byte[] body = io.potok.common.HttpBodyDecoder.decode(
                     response.headers().firstValue("content-encoding").orElse(null), response.body());
             feed = new SyndFeedInput().build(new XmlReader(new java.io.ByteArrayInputStream(body)));
+        } catch (UrlGuard.BlockedUrlException e) {
+            log.warn("rss_poll_blocked workflow={} error={}", workflow.name(), e.getMessage());
+            return; // SSRF guard: never call a private/internal target
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return;

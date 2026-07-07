@@ -19,7 +19,9 @@ import java.nio.charset.StandardCharsets;
  * active row in api_token (matched by SHA-256, last_used_at stamped).
  * POTOK_API_KEY unset → filter inactive (local dev unchanged).
  * Open by design: /api/meta (UI bootstrap), /hooks/** (webhook trigger),
- * actuator and the dashboard static assets — none of them match /api/**.
+ * the /actuator/health probes (uptime pingers) and the dashboard static assets.
+ * Guarded when a key is set: /actuator/prometheus and /actuator/info, so an
+ * unauthenticated caller can't read queue depths / execution counts / build info.
  */
 @Component
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
@@ -59,6 +61,11 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             return true;
         }
         String path = request.getRequestURI();
+        // Metrics and build-info are operational intelligence — guard them like /api/**.
+        // The /actuator/health* probes stay open so uptime pingers keep working.
+        if (path.equals("/actuator/prometheus") || path.equals("/actuator/info")) {
+            return false;
+        }
         return !path.startsWith("/api/") || path.equals("/api/meta");
     }
 

@@ -114,11 +114,13 @@ public class WarsawWasteActionHandler implements ActionHandler {
 
         String body;
         try {
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200) {
                 return StepResult.fail("warszawa19115.pl returned status " + response.statusCode());
             }
-            body = response.body();
+            // Route through the shared decoder like the http action and pollers:
+            // transparently handles gzip/deflate and the Content-Type charset.
+            body = io.potok.common.HttpBodyDecoder.decodeToString(response.headers(), response.body());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return StepResult.fail("warsaw_waste request interrupted");

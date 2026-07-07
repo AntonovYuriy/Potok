@@ -13,3 +13,6 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+# Internal audit reports — kept local, never tracked (zero AI-tooling traces in the repo)
+docs/audit-*.md

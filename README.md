@@ -416,17 +416,24 @@ they cannot drift.
 | `DB_URL` | `jdbc:postgresql://localhost:5432/potok` | Postgres JDBC URL |
 | `DB_USER` / `DB_PASSWORD` | `potok` / `potok` | DB credentials |
 | `PORT` | `8080` | HTTP port |
-| `POTOK_API_KEY` | – | root API key; unset = auth off (local dev) |
+| `POTOK_API_KEY` | – | root API key; unset = auth off (local dev). Also guards `/actuator/prometheus` + `/actuator/info` (health probes stay open) |
+| `POTOK_SECRET_KEY` | – | base64 32-byte AES key; required only to store the SMTP password from the dashboard (env `SMTP_*` works without it) |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | – | telegram action / examples |
+| `SMTP_HOST` / `SMTP_PORT` | – / `587` | email action SMTP server; unset host = email steps fail gracefully |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | – | SMTP credentials (app password for Gmail) |
+| `SMTP_FROM` | = username | sender address (Gmail requires it to match the account) |
+| `SMTP_STARTTLS` / `SMTP_AUTH` | `true` / `true` | SMTP transport toggles |
 | `POTOK_QUEUE_WORKERS` | `2` | concurrent workers (virtual threads) |
+| `POTOK_QUEUE_POLL_INTERVAL` | `PT1S` | queue poll cadence for workers |
 | `POTOK_QUEUE_LOCK_TIMEOUT` | `PT60S` | job lease; crash recovery horizon |
 | `POTOK_QUEUE_RETRY_BASE_DELAY` / `_MAX_DELAY` | `PT10S` / `PT10M` | backoff shape |
 | `POTOK_QUEUE_DEFAULT_MAX_ATTEMPTS` | `3` | default per-step attempts |
 | `POTOK_SHUTDOWN_GRACE` | `PT20S` | in-flight budget on SIGTERM, then lease release |
 | `POTOK_CRON_REFRESH_INTERVAL` | `PT30S` | trigger schedules re-read |
-| `POTOK_RETENTION_DAYS` | `30` | nightly purge of finished executions |
+| `POTOK_RETENTION_DAYS` | `30` | nightly purge of finished executions and old `rss_seen` dedupe rows |
 | `POTOK_DLQ_TELEGRAM` | `false` | DLQ Telegram alerts |
-| `POTOK_ALLOW_PRIVATE_URLS` | `false` | disable the SSRF guard (see Security) |
+| `POTOK_DLQ_NOTIFY_INTERVAL` | `PT1M` | rate limit for DLQ Telegram alerts |
+| `POTOK_ALLOW_PRIVATE_URLS` | `false` | disable the SSRF guard (see Security) — applies to http, pollers, RSS, ssl_check |
 | `POTOK_PREVIEW_TIMEOUT` | `PT10S` | wall-clock budget for `/api/preview` |
 | `POTOK_PUBLIC_URL` | `http://localhost:8080` | base URL for approval links in Telegram |
 | `POTOK_TELEGRAM_POLL_UPDATES` | `true` | native button taps + recipient ingest via getUpdates; `false` = URL buttons, no auto recipient registration |

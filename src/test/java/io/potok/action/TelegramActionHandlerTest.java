@@ -113,8 +113,10 @@ class TelegramActionHandlerTest {
                 Map.of("chat_id", "123", "text", "hi"), 1));
 
         assertThat(result.success()).isTrue();
-        assertThat(result.output()).containsEntry("chat_id", "123").containsEntry("sent_count", 1);
-        verify(telegram, times(1)).sendMessage(any(), any());
+        // M13: chat ids are masked in step output (readable via /api/executions),
+        // consistent with the recipients API. "123" is short -> fully masked.
+        assertThat(result.output()).containsEntry("chat_id", "•••").containsEntry("sent_count", 1);
+        verify(telegram, times(1)).sendMessage(eq("123"), any()); // the SEND itself uses the real id
     }
 
     @Test

@@ -59,7 +59,7 @@ public class SslCheckActionHandler implements ActionHandler {
         try {
             host = ctx.requireString("host");
         } catch (IllegalArgumentException e) {
-            return StepResult.fail(e.getMessage());
+            return StepResult.permanentFail(e.getMessage()); // bad step config — retry can't fix it
         }
         int port;
         try {

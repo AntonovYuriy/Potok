@@ -185,7 +185,9 @@ public class JobProcessor {
             return;
         }
 
-        if (retryPolicy.shouldRetry(attempt, step)) {
+        // A permanent failure (bad step config, blocked URL) cannot be fixed by
+        // retrying — dead-letter it on the first attempt with a readable reason.
+        if (!result.permanent() && retryPolicy.shouldRetry(attempt, step)) {
             Instant nextRun = retryPolicy.nextRunAt(Instant.now(), attempt, step);
             steps.markFailed(execution.id(), step.name(), result.error(), false);
             jobQueue.scheduleRetry(job.id(), nextRun);
@@ -196,8 +198,8 @@ public class JobProcessor {
             steps.markFailed(execution.id(), step.name(), result.error(), true);
             deadLetter(job, workflow, execution, step, attempt, result.error(), input);
             onStepFailedFinally(job, definition, workflow.name(), execution.id(), step);
-            log.warn("step_failed executionId={} step={} attempts={} error={}",
-                    execution.id(), step.name(), attempt, result.error());
+            log.warn("step_failed executionId={} step={} attempts={} permanent={} error={}",
+                    execution.id(), step.name(), attempt, result.permanent(), result.error());
         }
     }
 

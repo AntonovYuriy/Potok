@@ -19,15 +19,29 @@ import java.util.Set;
 @Component
 public class YamlDefinitionParser {
 
+    /** Self-DoS guards: pollers this fast hammer the target AND the free-tier DB. */
+    private static final java.time.Duration DEFAULT_MIN_POLL_INTERVAL = java.time.Duration.ofSeconds(30);
+    /** A fat-fingered {@code wait: 9999d} would park an execution for decades. */
+    private static final java.time.Duration DEFAULT_MAX_WAIT = java.time.Duration.ofDays(365);
+
     private final TemplateResolver conditionValidator;
+    private final java.time.Duration minPollInterval;
+    private final java.time.Duration maxWait;
 
     public YamlDefinitionParser() {
-        this(new TemplateResolver());
+        this(new TemplateResolver(), DEFAULT_MIN_POLL_INTERVAL, DEFAULT_MAX_WAIT);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public YamlDefinitionParser(TemplateResolver conditionValidator) {
+    public YamlDefinitionParser(
+            TemplateResolver conditionValidator,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${potok.limits.min-poll-interval:PT30S}") java.time.Duration minPollInterval,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${potok.limits.max-wait:P365D}") java.time.Duration maxWait) {
         this.conditionValidator = conditionValidator;
+        this.minPollInterval = minPollInterval;
+        this.maxWait = maxWait;
     }
 
     public WorkflowDefinition parse(String yamlSource) {
@@ -235,6 +249,7 @@ public class YamlDefinitionParser {
         if (interval == null) {
             throw new InvalidDefinitionException("'trigger.poll.interval' is required");
         }
+        requireMinInterval("poll", interval);
         if (!(map.get("http") instanceof Map<?, ?> http) || stringField(http, "url") == null) {
             throw new InvalidDefinitionException("'trigger.poll.http' must be a mapping with a 'url'");
         }
@@ -275,6 +290,7 @@ public class YamlDefinitionParser {
         if (interval == null) {
             throw new InvalidDefinitionException("'trigger.rss.interval' is required");
         }
+        requireMinInterval("rss", interval);
         String url = stringField(map, "url");
         if (url == null || url.isBlank()) {
             throw new InvalidDefinitionException("'trigger.rss.url' is required");
@@ -302,6 +318,11 @@ public class YamlDefinitionParser {
             }
             String action = stringField(stepMap, "action");
             java.time.Duration wait = parseDuration(name, "wait", stepMap.get("wait"));
+            if (wait != null && wait.compareTo(maxWait) > 0) {
+                throw new InvalidDefinitionException("step '" + name + "': 'wait' of " + wait
+                        + " exceeds the maximum of " + maxWait
+                        + " (POTOK_MAX_WAIT) — an execution parked that long is almost certainly a typo");
+            }
             boolean hasAction = action != null && !action.isBlank();
             if (hasAction == (wait != null)) {
                 throw new InvalidDefinitionException(wait != null
@@ -400,6 +421,14 @@ public class YamlDefinitionParser {
                     "step '" + stepName + "': '" + field + "' must be a positive integer");
         }
         return intValue;
+    }
+
+    private void requireMinInterval(String triggerKind, java.time.Duration interval) {
+        if (interval.compareTo(minPollInterval) < 0) {
+            throw new InvalidDefinitionException("'trigger." + triggerKind + ".interval' of " + interval
+                    + " is below the minimum of " + minPollInterval
+                    + " (POTOK_MIN_POLL_INTERVAL) — polling faster hammers the target and the database");
+        }
     }
 
     /** Accepts "500ms", "10s", "5m", "2h", "3d", a plain integer (seconds), or ISO-8601 ("PT10S"). */

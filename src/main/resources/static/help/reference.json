@@ -52,9 +52,9 @@
     }
   ],
   "conditions": {
-    "grammar": "expr := or; or := and ('||' and)*; and := unit ('&&' unit)*; unit := '(' expr ')' | a OP b | contains(x, y) | exists(path) | path",
+    "grammar": "expr := or; or := and ('||' and)*; and := unit ('&&' unit)*; unit := '!' unit | '(' expr ')' | a OP b | contains(x, y) | exists(path) | path",
     "operators": "== != > < >= <= (numeric when both numbers, string otherwise)",
-    "functions": "contains(haystack, needle) — substring or list membership; exists(path) — non-null",
+    "functions": "contains(haystack, needle) — substring or list membership; exists(path) — non-null; !unit — negation",
     "validated": "syntax checked at create/update — malformed conditions are rejected with 400"
   },
   "templating": [

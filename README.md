@@ -158,14 +158,15 @@ binds tighter than `||`):
 expr   := or
 or     := and ('||' and)*
 and    := unit ('&&' unit)*
-unit   := '(' expr ')' | a OP b | contains(x, y) | exists(path) | path
+unit   := '!' unit | '(' expr ')' | a OP b | contains(x, y) | exists(path) | path
 OP     := == | != | > | < | >= | <=
 ```
 
 Operands: dot-paths (`steps.fetch.body.price`, `trigger.user`, `poll.value`),
 numbers, `'strings'`, `true/false/null`. Comparison is numeric when both sides
 are numbers, lexicographic otherwise. `contains` = substring or list
-membership; `exists` = path resolves to non-null.
+membership; `exists` = path resolves to non-null. `!` negates the unit that
+follows it (`!exists(steps.fetch.body.error)`, `!(a && b)`).
 
 ### Templating
 
@@ -361,7 +362,9 @@ you publish workflows into the menu explicitly.
    `to: approved`: per-recipient send, the step fails only if every send
    fails, `sent_count = 0` is a successful no-op (publish before anyone
    subscribes is fine). Output includes `audience` so you can tell broadcasts
-   apart in the executions view.
+   apart in the executions view. Un-publishing (`subscribable: false`) stops
+   delivery immediately as well as hiding the menu entry — subscription rows
+   are kept, so re-publishing resumes delivery to the same people.
 
 4. **REST surface** for tooling and the dashboard:
 
@@ -431,6 +434,8 @@ they cannot drift.
 | `POTOK_SHUTDOWN_GRACE` | `PT20S` | in-flight budget on SIGTERM, then lease release |
 | `POTOK_CRON_REFRESH_INTERVAL` | `PT30S` | trigger schedules re-read |
 | `POTOK_RETENTION_DAYS` | `30` | nightly purge of finished executions and old `rss_seen` dedupe rows |
+| `POTOK_MIN_POLL_INTERVAL` | `PT30S` | reject poll/rss intervals below this at create (self-DoS guard) |
+| `POTOK_MAX_WAIT` | `P365D` | reject `wait:` durations above this at create (typo guard) |
 | `POTOK_DLQ_TELEGRAM` | `false` | DLQ Telegram alerts |
 | `POTOK_DLQ_NOTIFY_INTERVAL` | `PT1M` | rate limit for DLQ Telegram alerts |
 | `POTOK_ALLOW_PRIVATE_URLS` | `false` | disable the SSRF guard (see Security) — applies to http, pollers, RSS, ssl_check |

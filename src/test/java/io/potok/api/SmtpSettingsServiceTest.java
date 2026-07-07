@@ -145,4 +145,20 @@ class SmtpSettingsServiceTest {
         // SmtpView is a record with no password component — the secret cannot leak through it
         assertThat(view.toString()).doesNotContain("realpw").doesNotContain("CIPHER");
     }
+
+    @Test
+    @DisplayName("rotated POTOK_SECRET_KEY (decrypt fails) falls back to env instead of throwing")
+    void rotatedKeyFallsBackToEnv() {
+        SmtpSettingsRepository repo = mock(SmtpSettingsRepository.class);
+        SecretCipher cipher = mock(SecretCipher.class);
+        when(repo.find()).thenReturn(Optional.of(dbRow("CIPHER")));
+        when(cipher.isEnabled()).thenReturn(true);
+        when(cipher.decrypt("CIPHER")).thenThrow(new IllegalStateException("decryption failed"));
+
+        SmtpConfig config = new SmtpSettingsService(repo, cipher, env("smtp.env")).resolve();
+
+        // M13: this used to propagate and dead-letter every email step
+        assertThat(config.source()).isEqualTo(SmtpConfig.Source.ENV);
+        assertThat(config.host()).isEqualTo("smtp.env");
+    }
 }

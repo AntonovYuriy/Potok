@@ -131,7 +131,10 @@ email step fails gracefully. The Settings page shows the active source and a
 **Send test** button that connects + authenticates without sending an email.
 
 > Rotating `POTOK_SECRET_KEY` invalidates the stored password (it can't be
-> decrypted) — re-enter it in the dashboard, or fall back to env `SMTP_*`.
+> decrypted). Sending is not interrupted: on a decrypt failure Potok logs a
+> warning and automatically falls back to the `SMTP_*` env vars (or "not
+> configured" if none are set). To move back to dashboard-stored config,
+> re-enter the password under Settings → Email (SMTP) after the rotation.
 
 ## Honest notes (free-tier caveats)
 
@@ -149,8 +152,12 @@ email step fails gracefully. The Settings page shows the active source and a
   after a cold start. The pooled (`-pooler`) host plus
   `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=5` keeps you inside the
   connection limits; do NOT point multiple environments at one free project.
-- **At-least-once reminder**: if you run more than one instance against one
-  database, that's supported (SKIP LOCKED), but cron triggers will fire on
-  EVERY instance — duplicate executions. Single instance until M3 adds
-  leader election for cron.
+- **Multi-instance**: safe at any replica count. Job execution dedupes via
+  `FOR UPDATE SKIP LOCKED`; poll/rss ticks take a per-workflow advisory lock;
+  cron fires claim a `(workflow, minute)` row (`ON CONFLICT DO NOTHING`), so a
+  schedule fires once across replicas. The Telegram `getUpdates` poller is
+  single-consumer via a session advisory lock. Caveat: the cron claim is
+  keyed on the observed minute — replicas with badly skewed clocks straddling
+  a minute boundary could double-fire; keep NTP on. The free tier is one
+  instance anyway.
 - **Disk**: none needed; the app is stateless, state lives in Postgres.

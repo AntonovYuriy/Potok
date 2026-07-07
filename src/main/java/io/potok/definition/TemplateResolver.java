@@ -71,8 +71,9 @@ public class TemplateResolver {
      *   expr  := or
      *   or    := and ('||' and)*
      *   and   := unit ('&&' unit)*
-     *   unit  := '(' expr ')' | comparison | contains(...) | exists(...) | truthy-path
-     * '&&' binds tighter than '||'; parentheses group.
+     *   unit  := '!' unit | '(' expr ')' | comparison | contains(...) | exists(...) | truthy-path
+     * '&&' binds tighter than '||'; parentheses group; '!' negates the unit
+     * that follows it (use parentheses to negate a whole sub-expression).
      */
     public boolean evaluateCondition(String expression, Map<String, Object> context) {
         String expr = expression.trim();
@@ -104,6 +105,9 @@ public class TemplateResolver {
     private boolean evaluateUnit(String expr, Map<String, Object> context) {
         if (expr.isEmpty()) {
             throw new IllegalArgumentException("empty operand in condition");
+        }
+        if (isNegation(expr)) {
+            return !evaluateUnit(expr.substring(1).trim(), context);
         }
         if (expr.charAt(0) == '(') {
             int close = closingParen(expr, 0);
@@ -138,6 +142,12 @@ public class TemplateResolver {
                 if (unit.isEmpty()) {
                     throw new IllegalArgumentException("empty operand in condition");
                 }
+                while (isNegation(unit)) {
+                    unit = unit.substring(1).trim();
+                    if (unit.isEmpty()) {
+                        throw new IllegalArgumentException("dangling '!' in condition");
+                    }
+                }
                 if (unit.charAt(0) == '(') {
                     int close = closingParen(unit, 0);
                     if (close == unit.length() - 1) {
@@ -150,6 +160,11 @@ public class TemplateResolver {
                 }
             }
         }
+    }
+
+    /** A leading '!' is negation unless it starts the '!=' operator. */
+    private static boolean isNegation(String expr) {
+        return expr.charAt(0) == '!' && (expr.length() < 2 || expr.charAt(1) != '=');
     }
 
     /** Splits on the operator at paren depth 0, outside quotes; single part = no operator. */

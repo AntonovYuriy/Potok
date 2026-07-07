@@ -248,6 +248,35 @@ class TemplateResolverTest {
     }
 
     @Test
+    void negationFlipsUnits() {
+        TemplateResolver resolver = new TemplateResolver(name -> null);
+        java.util.Map<String, Object> ctx = java.util.Map.of(
+                "steps", java.util.Map.of("fetch", java.util.Map.of("status", 200)));
+        // the M13 fix: this used to silently evaluate FALSE (operand parsed as a path)
+        assertThat(resolver.evaluateCondition("{{ !exists(steps.fetch.missing) }}", ctx)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ !exists(steps.fetch.status) }}", ctx)).isFalse();
+        assertThat(resolver.evaluateCondition("{{ !(steps.fetch.status == 500) }}", ctx)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ !steps.fetch.missing }}", ctx)).isTrue();
+        assertThat(resolver.evaluateCondition("{{ !!steps.fetch.status }}", ctx)).isTrue();
+        // '!=' is still the operator, not a negation
+        assertThat(resolver.evaluateCondition("{{ steps.fetch.status != 500 }}", ctx)).isTrue();
+        // negation composes with && / ||
+        assertThat(resolver.evaluateCondition(
+                "{{ !exists(steps.fetch.missing) && steps.fetch.status == 200 }}", ctx)).isTrue();
+    }
+
+    @Test
+    void danglingNegationIsRejectedAtValidation() {
+        TemplateResolver resolver = new TemplateResolver(name -> null);
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> resolver.validateConditionSyntax("{{ ! }}"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("dangling '!'");
+        // valid negation passes validation
+        resolver.validateConditionSyntax("{{ !exists(a.b) && !(c == 1) }}");
+    }
+
+    @Test
     void conditionLiteralWithEscapedDoubleQuote() {
         TemplateResolver resolver = new TemplateResolver(name -> null);
         java.util.Map<String, Object> ctx = java.util.Map.of(

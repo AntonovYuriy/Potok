@@ -153,6 +153,11 @@ public class WorkflowController {
     @PostMapping("/{id}/run")
     public ResponseEntity<Map<String, Object>> run(@PathVariable UUID id) {
         Workflow workflow = workflowService.findById(id).orElseThrow(() -> notFound(id));
+        // Every trigger source re-checks enabled before firing; manual runs must too.
+        if (!workflow.enabled()) {
+            throw new WorkflowConflictException(
+                    "workflow is disabled — enable it before running (use /api/preview for a dry run)");
+        }
         WorkflowExecution execution = executionService.start(workflow,
                 Map.of("type", "manual", "payload", Map.of()));
         return ResponseEntity.accepted().body(Map.of(

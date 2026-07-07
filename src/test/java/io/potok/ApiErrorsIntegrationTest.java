@@ -74,4 +74,43 @@ class ApiErrorsIntegrationTest extends IntegrationTestBase {
         assertThat(postJson("/hooks/disable-me", Map.of()).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
+
+    @Test
+    void unknownActionTypeIsRejectedAtCreate() {
+        // M13: "telegran" used to create fine and fail only at run time (bypassing the DLQ)
+        var response = postYaml("/api/workflows", """
+                name: typo-action
+                trigger:
+                  webhook: { path: "typo-action" }
+                steps:
+                  - { name: notify, action: telegran, with: { chat_id: "1", text: "hi" } }
+                """);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) response.getBody().get("detail"))
+                .contains("unknown action 'telegran'")
+                .contains("telegram"); // the available list helps fix the typo
+    }
+
+    @Test
+    void runOfDisabledWorkflowIsRejected() {
+        var created = postYaml("/api/workflows", """
+                name: disabled-run
+                trigger:
+                  webhook: { path: "disabled-run" }
+                steps:
+                  - { name: n, action: http, with: { url: "http://example.invalid", fail_on_status: false } }
+                """);
+        String id = (String) created.getBody().get("id");
+        rest.delete("/api/workflows/" + id); // soft-disable
+
+        // M13: manual run now respects enabled like every other trigger source
+        var run = postJson("/api/workflows/" + id + "/run", java.util.Map.of());
+        assertThat(run.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) run.getBody().get("detail")).contains("disabled");
+
+        // re-enabled -> runs again
+        postJson("/api/workflows/" + id + "/enable", java.util.Map.of());
+        assertThat(postJson("/api/workflows/" + id + "/run", java.util.Map.of()).getStatusCode())
+                .isEqualTo(HttpStatus.ACCEPTED);
+    }
 }

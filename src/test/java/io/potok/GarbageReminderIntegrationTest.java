@@ -113,4 +113,39 @@ class GarbageReminderIntegrationTest extends IntegrationTestBase {
         assertThat(steps.get(1).get("status")).isEqualTo("SKIPPED");
         WIRE_MOCK.verify(0, postRequestedFor(urlEqualTo("/bottest-token/sendMessage")));
     }
+
+    private static byte[] gzip(String text) throws java.io.IOException {
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var gz = new java.util.zip.GZIPOutputStream(bytes)) {
+            gz.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        return bytes.toByteArray();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void decodesGzippedApiResponse() throws Exception {
+        // warszawa19115.pl / its CDN may gzip even though Potok never asks. Before M12 the
+        // handler read raw bytes with ofString() → garbled → "not JSON" failure. Now it
+        // goes through HttpBodyDecoder like the http action, so a gzipped body parses.
+        String today = LocalDate.now(ZoneId.of("Europe/Warsaw")).toString();
+        WIRE_MOCK.stubFor(get(urlPathEqualTo("/harmonogramy-wywozu-odpadow"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "text/html;charset=UTF-8")
+                        .withHeader("Content-Encoding", "gzip")
+                        .withBody(gzip(apiJson(today)))));
+        WIRE_MOCK.stubFor(com.github.tomakehurst.wiremock.client.WireMock
+                .post(urlEqualTo("/bottest-token/sendMessage"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"ok\": true}")));
+
+        String executionId = createAndRun("garbage-gzip", "garbage-gzip");
+
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(getExecution(executionId).get("status")).isEqualTo("SUCCEEDED"));
+
+        List<Map<String, Object>> steps =
+                (List<Map<String, Object>>) getExecution(executionId).get("steps");
+        Map<String, Object> output = (Map<String, Object>) steps.get(0).get("output");
+        assertThat(output.get("has_collection")).isEqualTo(true); // gzipped body decoded + parsed
+    }
 }

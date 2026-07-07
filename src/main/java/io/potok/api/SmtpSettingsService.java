@@ -65,7 +65,16 @@ public class SmtpSettingsService implements SmtpConfigResolver {
                         + "falling back to env SMTP config");
                 return Optional.empty();
             }
-            password = cipher.decrypt(row.passwordEncrypted());
+            try {
+                password = cipher.decrypt(row.passwordEncrypted());
+            } catch (IllegalStateException e) {
+                // key ROTATED after storing (decrypt fails): mirror the key-removed
+                // branch — never crash sends, fall back to env; the operator re-enters
+                // the password in the dashboard to move back to DB config.
+                log.warn("smtp_config password cannot be decrypted (POTOK_SECRET_KEY changed?); "
+                        + "falling back to env SMTP config — re-enter the password in Settings");
+                return Optional.empty();
+            }
         }
         int port = row.port() == null ? DEFAULT_PORT : row.port();
         String from = row.fromAddress() != null && !row.fromAddress().isBlank()

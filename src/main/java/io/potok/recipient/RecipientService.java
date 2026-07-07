@@ -55,7 +55,8 @@ public class RecipientService {
         boolean autoApprove = settings.getBoolean(AUTO_APPROVE_KEY, false);
         Status status = autoApprove ? Status.APPROVED : Status.PENDING;
         Recipient created = recipients.upsertOnContact(chatId, displayName, status);
-        log.info("recipient_registered chatId={} status={} autoApprove={}", chatId, status, autoApprove);
+        log.info("recipient_registered chatId={} status={} autoApprove={}",
+                io.potok.common.Mask.chatId(chatId), status, autoApprove);
         return new Contact(created, true);
     }
 

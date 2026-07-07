@@ -212,7 +212,7 @@ public class TelegramUpdatesPoller {
             telegram.editMessageTextWithButtons(chatId, messageId, menu.text(), menu.keyboard());
         } catch (Exception e) {
             log.warn("telegram_menu_edit_failed chatId={} error={}",
-                    chatId, io.potok.common.Errors.describe(e));
+                    io.potok.common.Mask.chatId(chatId), io.potok.common.Errors.describe(e));
         }
     }
 
@@ -261,7 +261,7 @@ public class TelegramUpdatesPoller {
             }
         } catch (Exception e) {
             log.warn("telegram_menu_send_failed chatId={} error={}",
-                    chatId, io.potok.common.Errors.describe(e));
+                    io.potok.common.Mask.chatId(chatId), io.potok.common.Errors.describe(e));
         }
     }
 
@@ -292,7 +292,7 @@ public class TelegramUpdatesPoller {
             telegram.sendMessage(chatId, text);
         } catch (Exception e) {
             log.warn("telegram_reply_failed chatId={} error={}",
-                    chatId, io.potok.common.Errors.describe(e));
+                    io.potok.common.Mask.chatId(chatId), io.potok.common.Errors.describe(e));
         }
     }
 

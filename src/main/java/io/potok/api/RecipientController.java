@@ -113,9 +113,6 @@ public class RecipientController {
     }
 
     static String maskChatId(String chatId) {
-        if (chatId == null || chatId.length() <= 4) {
-            return "•••";
-        }
-        return "•••" + chatId.substring(chatId.length() - 4);
+        return io.potok.common.Mask.chatId(chatId);
     }
 }

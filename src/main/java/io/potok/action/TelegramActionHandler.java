@@ -65,7 +65,7 @@ public class TelegramActionHandler implements ActionHandler {
         try {
             text = ctx.requireString("text");
         } catch (IllegalArgumentException e) {
-            return StepResult.fail(e.getMessage());
+            return StepResult.permanentFail(e.getMessage()); // bad step config — retry can't fix it
         }
 
         String chatId = ctx.optionalString("chat_id", null);
@@ -76,11 +76,11 @@ public class TelegramActionHandler implements ActionHandler {
                 + (isNonBlank(toRecipient) ? 1 : 0)
                 + (isNonBlank(to) ? 1 : 0);
         if (specifiedAddresses == 0) {
-            return StepResult.fail(
+            return StepResult.permanentFail(
                     "telegram step needs one of 'chat_id', 'to_recipient', or 'to: approved'");
         }
         if (specifiedAddresses > 1) {
-            return StepResult.fail(
+            return StepResult.permanentFail(
                     "telegram step accepts only one of 'chat_id', 'to_recipient', 'to' — not several");
         }
 
@@ -109,7 +109,8 @@ public class TelegramActionHandler implements ActionHandler {
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 Map<String, Object> output = new LinkedHashMap<>();
                 output.put("status", response.statusCode());
-                output.put("chat_id", chatId);
+                // masked like the recipients API: step output is readable via /api/executions
+                output.put("chat_id", io.potok.common.Mask.chatId(chatId));
                 if (recipientId != null) {
                     output.put("recipient_id", recipientId);
                 }

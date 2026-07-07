@@ -151,13 +151,31 @@ public class WorkflowRepository {
     }
 
     public Optional<Workflow> findEnabledByWebhookPath(String path) {
+        // Defensive .list(): uniqueness is enforced at create/update and by the V16
+        // partial unique index, but a duplicate slipping through must degrade to
+        // "first match wins", never a 500 on every delivery.
         return jdbc.sql("""
                         select * from workflow
                         where enabled and definition -> 'trigger' -> 'webhook' ->> 'path' = :path
+                        order by created_at
+                        limit 1
                         """)
                 .param("path", path)
                 .query(rowMapper)
                 .optional();
+    }
+
+    /** Is the webhook path already used by another ENABLED workflow? */
+    public boolean enabledWebhookPathTaken(String path, UUID excludeId) {
+        return jdbc.sql("""
+                        select count(*) from workflow
+                        where enabled and definition -> 'trigger' -> 'webhook' ->> 'path' = :path
+                          and (:excludeId::uuid is null or id != :excludeId::uuid)
+                        """)
+                .param("path", path)
+                .param("excludeId", excludeId)
+                .query(Long.class)
+                .single() > 0;
     }
 
     public boolean existsByName(String name) {

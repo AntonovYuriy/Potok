@@ -85,11 +85,17 @@ public class SubscriptionRepository {
                 rs.getObject("last_seen_at", OffsetDateTime.class).toInstant());
     };
 
-    /** Used by the telegram action's fan-out for {@code to: subscribers}. */
+    /**
+     * Used by the telegram action's fan-out for {@code to: subscribers}.
+     * Joins the CURRENT workflow state: un-publishing ({@code subscribable=false})
+     * or disabling a workflow stops delivery immediately, even though the
+     * subscription rows are kept for when it is published again.
+     */
     public List<Recipient> listApprovedSubscribers(UUID workflowId) {
         return jdbc.sql("""
                         select r.* from workflow_subscription ws
                         join telegram_recipient r on r.id = ws.recipient_id
+                        join workflow w on w.id = ws.workflow_id and w.subscribable and w.enabled
                         where ws.workflow_id = :workflowId and r.status = 'APPROVED'
                         order by r.display_name
                         """)

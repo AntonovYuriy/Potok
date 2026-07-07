@@ -287,4 +287,48 @@ class SubscriptionsIntegrationTest extends IntegrationTestBase {
         assertThat(items).hasSize(1);
         assertThat(items.get(0)).containsEntry("displayName", "Sub-API-User");
     }
+
+    @Test
+    void unpublishingStopsDeliveryToExistingSubscribers() {
+        WIRE_MOCK.stubFor(post(urlPathMatching("/bot.*/sendMessage"))
+                .willReturn(okJson("{\"ok\":true}")));
+        UUID dave = registerApproved("701201", "Unpub-Dave");
+        UUID workflowId = createWorkflow(subscribableWorkflow("unpub-wf", "unpub-wf", true));
+        subscriptionService.toggle(workflowId, dave);
+        assertThat(subscriptionService.countSubscribers(workflowId)).isEqualTo(1L);
+
+        // un-publish: menu entry disappears AND delivery stops (M13 semantics)
+        ResponseEntity<Map<String, Object>> patch = rest.exchange(
+                "/api/workflows/" + workflowId + "/subscribable",
+                org.springframework.http.HttpMethod.PATCH,
+                new org.springframework.http.HttpEntity<>(Map.of("subscribable", false),
+                        jsonHeaders()),
+                MAP_TYPE);
+        assertThat(patch.getStatusCode().is2xxSuccessful()).isTrue();
+
+        ResponseEntity<Map<String, Object>> run = postJson(
+                "/api/workflows/" + workflowId + "/run", Map.of());
+        String executionId = String.valueOf(run.getBody().get("executionId"));
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(getExecution(executionId).get("status")).isEqualTo("SUCCEEDED"));
+
+        // sent_count == 0: the subscription row survives, but an un-published
+        // workflow no longer delivers
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> steps = (List<Map<String, Object>>) getExecution(executionId).get("steps");
+        Map<String, Object> notify = steps.stream()
+                .filter(s -> "notify".equals(s.get("name"))).findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> output = (Map<String, Object>) notify.get("output");
+        assertThat(output).containsEntry("sent_count", 0);
+        long deliveries = WIRE_MOCK.findAll(postRequestedFor(urlPathMatching("/bot.*/sendMessage")))
+                .stream().filter(r -> r.getBodyAsString().contains("701201")).count();
+        assertThat(deliveries).isZero();
+    }
+
+    private static org.springframework.http.HttpHeaders jsonHeaders() {
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        return headers;
+    }
 }

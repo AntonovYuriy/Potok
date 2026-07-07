@@ -478,4 +478,66 @@ class YamlDefinitionParserTest {
                     with: { text: "Deploy?", timeout: "yes please" }
                 """)).hasMessageContaining("duration");
     }
+
+    @Test
+    void rejectsPollIntervalBelowMinimum() {
+        // production default minimum is 30s (self-DoS guard, POTOK_MIN_POLL_INTERVAL)
+        assertThatThrownBy(() -> parser.parse("""
+                name: too-fast
+                trigger:
+                  poll:
+                    interval: 5s
+                    http: { url: "https://x.example" }
+                    fire_when: "changed"
+                steps:
+                  - { name: n, action: http, with: { url: "https://x.example" } }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("below the minimum")
+                .hasMessageContaining("POTOK_MIN_POLL_INTERVAL");
+    }
+
+    @Test
+    void rejectsRssIntervalBelowMinimum() {
+        assertThatThrownBy(() -> parser.parse("""
+                name: too-fast-rss
+                trigger:
+                  rss: { interval: 10s, url: "https://x.example/feed" }
+                steps:
+                  - { name: n, action: http, with: { url: "https://x.example" } }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("below the minimum");
+    }
+
+    @Test
+    void rejectsAbsurdWaitDuration() {
+        // production default cap is 365d (POTOK_MAX_WAIT)
+        assertThatThrownBy(() -> parser.parse("""
+                name: forever
+                trigger:
+                  cron: "0 9 * * *"
+                steps:
+                  - { name: sleep, wait: 9999d }
+                  - { name: n, action: http, with: { url: "https://x.example" } }
+                """))
+                .isInstanceOf(InvalidDefinitionException.class)
+                .hasMessageContaining("exceeds the maximum")
+                .hasMessageContaining("POTOK_MAX_WAIT");
+    }
+
+    @Test
+    void acceptsReasonableIntervalAndWait() {
+        parser.parse("""
+                name: sane
+                trigger:
+                  poll:
+                    interval: 5m
+                    http: { url: "https://x.example" }
+                    fire_when: "changed"
+                steps:
+                  - { name: sleep, wait: 3d }
+                  - { name: n, action: http, with: { url: "https://x.example" } }
+                """);
+    }
 }

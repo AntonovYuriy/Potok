@@ -69,3 +69,6 @@ potok:
     notify-interval: ${POTOK_DLQ_NOTIFY_INTERVAL:PT1M}
   retention:
     days: ${POTOK_RETENTION_DAYS:30}
+  limits:
+    min-poll-interval: ${POTOK_MIN_POLL_INTERVAL:PT30S}
+    max-wait: ${POTOK_MAX_WAIT:P365D}

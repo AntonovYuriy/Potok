@@ -46,12 +46,18 @@ public class HttpActionHandler implements ActionHandler {
     @Override
     public StepResult execute(StepContext ctx) {
         String method = ctx.optionalString("method", "GET").toUpperCase(Locale.ROOT);
-        String url = ctx.requireString("url");
+        String url;
+        try {
+            url = ctx.requireString("url");
+        } catch (IllegalArgumentException e) {
+            // Bad step config, not a transient fault — retrying cannot produce a url.
+            return StepResult.permanentFail(e.getMessage());
+        }
 
         try {
             urlGuard.check(url);
         } catch (io.potok.common.UrlGuard.BlockedUrlException e) {
-            return StepResult.fail(e.getMessage());
+            return StepResult.permanentFail(e.getMessage());
         }
 
         HttpRequest.Builder request = HttpRequest.newBuilder()

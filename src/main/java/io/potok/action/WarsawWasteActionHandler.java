@@ -84,7 +84,7 @@ public class WarsawWasteActionHandler implements ActionHandler {
         try {
             addressPointId = ctx.requireString("address_point_id");
         } catch (IllegalArgumentException e) {
-            return StepResult.fail(e.getMessage());
+            return StepResult.permanentFail(e.getMessage()); // bad step config — retry can't fix it
         }
         String when = ctx.optionalString("when", "today");
         if (!when.equals("today") && !when.equals("tomorrow")) {

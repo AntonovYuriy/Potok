@@ -66,7 +66,7 @@ public class EmailActionHandler implements ActionHandler {
             subject = ctx.requireString("subject");
             body = ctx.requireString("body");
         } catch (IllegalArgumentException e) {
-            return StepResult.fail(e.getMessage());
+            return StepResult.permanentFail(e.getMessage()); // bad step config — retry can't fix it
         }
         if (subject.length() > MAX_SUBJECT_CHARS) {
             return StepResult.fail("email subject exceeds " + MAX_SUBJECT_CHARS + " characters");

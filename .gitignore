@@ -16,3 +16,6 @@ node_modules/
 
 # Internal audit reports — kept local, never tracked (zero AI-tooling traces in the repo)
 docs/audit-*.md
+
+# Серверные правки к compose (порты, restart-политика) — только локально
+docker-compose.override.yml

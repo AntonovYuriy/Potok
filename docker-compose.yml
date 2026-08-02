@@ -3,6 +3,12 @@ services:
     build: .
     ports:
       - "8080:8080"
+    # Compose читает .env только для подстановки ${...} в этот файл, поэтому
+    # переменные, не перечисленные ниже в environment (SMTP_*, POTOK_SECRET_KEY),
+    # до контейнера не доезжали. env_file передаёт .env целиком; значения из
+    # environment при совпадении имён остаются главнее.
+    env_file:
+      - .env
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/potok
       DB_USER: potok

@@ -23,4 +23,7 @@ docker compose up -d postgres   # local database on :5432
 
 1. `./gradlew test` green.
 2. README/docs updated for user-visible changes.
-3. CI (GitHub Actions) must pass; PRs are squash-merged.
+3. Changes land as squash-merges into `main` on the canonical repo
+   (self-hosted Gitea). GitHub is an archive mirror — its Actions are off
+   and pull requests opened there are not merged; the local suite in step 1
+   is the gate.

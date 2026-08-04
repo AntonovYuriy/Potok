@@ -1,8 +1,20 @@
 # Handoff
 
-_Last updated: 2026-07-07 (M13 behavior fixes done)._
+_Last updated: 2026-08-04 (git/deploy flow written up in CLAUDE.md)._
 
 ## Current state
+
+- **Git/deploy flow documented** (2026-08-04, branch `docs/git-deploy-flow`, squash `c71202f`, 337 tests):
+  `CLAUDE.md` now carries the authoritative flow, extending the owner-approved policy from `110a53e`.
+  Canonical repo is self-hosted **Gitea** (`origin`, home-server:2222 via the shared LAN→Tailscale ssh
+  alias); GitHub is an archive mirror only (auto-sync ~22:30) — never push there, never use `gh`.
+  **No CI anywhere** (Gitea Actions off; the mirrored `.github/workflows/ci.yml` is not a gate), so the
+  single gate before push is the **full local suite** `./gradlew build` — watch for `:test UP-TO-DATE`,
+  which means Gradle skipped the tests; re-run `./gradlew cleanTest build` and check
+  `build/test-results/test/*.xml`. After green, the branch is squash-merged into `main` autonomously;
+  push to `main` fires the Gitea webhook → `~/apps/Potok/deploy.sh` (compose build off-prod →
+  health-check `127.0.0.1:8080/actuator/health` ≤240 s → auto-rollback on failure) → result line in
+  `/var/log/deploys.log`. Push to any non-`main` branch never deploys.
 
 - **M13 done — behavior bug fixes** (2026-07-07, branch `feat/m13-behavior-fixes`, from the usage-scenario audit `docs/audit-usage-20260707.md` — local file, audits stay untracked):
   - **Webhook path collision (was user-triggerable 500).** Two ENABLED workflows on one path made `POST /hooks/{path}` throw (`.optional()` on 2 rows) and silenced BOTH. Now: create/update/enable reject a taken path with **409** ("an active workflow already listens on webhook path 'x'"); Flyway **V16** disables later duplicates (they were already broken) and adds a partial **unique** index as the concurrent-create backstop; the lookup itself is defensive (`order by created_at limit 1`). `WebhookPathConflictIntegrationTest` (409 on create/update/enable; delivery 202; disable frees the path).

@@ -263,7 +263,7 @@ actually changes.
 name: availability-watcher
 trigger:
   poll:
-    interval: 10m
+    interval: 15m
     http: { method: GET, url: "https://shop.example.com/product/123" }
     extract: { css: "span.availability" }
     fire_when: "changed"

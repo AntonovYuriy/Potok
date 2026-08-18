@@ -68,6 +68,7 @@ class RestartSurvivalIntegrationTest {
                 "--potok.telegram.api-base=" + STUB.baseUrl(),
                 "--potok.telegram.bot-token=test-token",
                 "--potok.queue.poll-interval=PT0.1S",
+                "--potok.queue.idle-poll-cap=PT0.2S",
                 "--potok.cron.refresh-interval=PT1H",
                 "--potok.allow-private-urls=true");
     }

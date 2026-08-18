@@ -8,6 +8,7 @@ import java.time.Duration;
 public record QueueProperties(
         int workers,
         Duration pollInterval,
+        Duration idlePollCap,
         Duration lockTimeout,
         Duration retryBaseDelay,
         Duration retryMaxDelay,

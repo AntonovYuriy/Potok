@@ -107,7 +107,7 @@ class YamlDefinitionParserTest {
                 name: x
                 trigger:
                   poll:
-                    interval: 5m
+                    interval: 30m
                     http: { url: "https://x" }
                     fire_when: "{{ (body.price < 100 }}"
                 steps:
@@ -532,7 +532,7 @@ class YamlDefinitionParserTest {
                 name: sane
                 trigger:
                   poll:
-                    interval: 5m
+                    interval: 30m
                     http: { url: "https://x.example" }
                     fire_when: "changed"
                 steps:

@@ -57,6 +57,63 @@ class AuthIntegrationTest extends IntegrationTestBase {
         assertThat(rest.getForEntity("/js/app.js", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    org.springframework.jdbc.core.simple.JdbcClient jdbc;
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void lastUsedStampIsThrottledNotPerRequest() {
+        HttpHeaders root = new HttpHeaders();
+        root.set("X-API-Key", "secret-key-123");
+        ResponseEntity<Map<String, Object>> minted = rest.exchange("/api/tokens", HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "throttle-probe"), withJson(root)), MAP_TYPE);
+        assertThat(minted.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String token = (String) minted.getBody().get("token");
+        String tokenId = (String) minted.getBody().get("id");
+
+        // first authenticated call stamps last_used_at
+        assertThat(listWorkflows(token)).isEqualTo(HttpStatus.OK);
+        String first = lastUsedAt(tokenId, root);
+        assertThat(first).isNotNull();
+
+        // immediate second call is authenticated but does NOT write the stamp again
+        assertThat(listWorkflows(token)).isEqualTo(HttpStatus.OK);
+        assertThat(lastUsedAt(tokenId, root)).as("stamp throttled within the window").isEqualTo(first);
+
+        // once the stored stamp is older than the throttle window, the next call refreshes it
+        jdbc.sql("update api_token set last_used_at = now() - interval '2 minutes' where id = :id::uuid")
+                .param("id", tokenId).update();
+        String backdated = lastUsedAt(tokenId, root);
+        assertThat(listWorkflows(token)).isEqualTo(HttpStatus.OK);
+        assertThat(lastUsedAt(tokenId, root)).as("stale stamp refreshed").isNotEqualTo(backdated);
+    }
+
+    private HttpStatus listWorkflows(String apiKey) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-API-Key", apiKey);
+        return (HttpStatus) rest.exchange("/api/workflows", HttpMethod.GET,
+                new HttpEntity<>(headers), String.class).getStatusCode();
+    }
+
+    private static HttpHeaders withJson(HttpHeaders base) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.putAll(base);
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        return headers;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String lastUsedAt(String tokenId, HttpHeaders auth) {
+        ResponseEntity<java.util.List> list = rest.exchange("/api/tokens", HttpMethod.GET,
+                new HttpEntity<>(auth), java.util.List.class);
+        for (Map<String, Object> meta : (java.util.List<Map<String, Object>>) list.getBody()) {
+            if (tokenId.equals(meta.get("id"))) {
+                return (String) meta.get("lastUsedAt");
+            }
+        }
+        throw new AssertionError("token " + tokenId + " not in /api/tokens list");
+    }
+
     @Test
     void metricsAndInfoNeedKeyButHealthStaysOpen() {
         // health probes stay open for uptime pingers…

@@ -119,7 +119,8 @@ class RetentionIntegrationTest extends IntegrationTestBase {
 
         assertThat(rssSeenCount(workflowId, "old-item")).as("old dedupe row purged").isZero();
         assertThat(rssSeenCount(workflowId, "recent-item")).as("recent kept").isEqualTo(1);
-        // dedupe still works: the kept item is still "seen" (markSeen returns false = not new)
-        assertThat(pollState.markSeen(id, "recent-item")).isFalse();
+        // dedupe still works: the kept item is still "seen" (batch returns only NEW ids)
+        assertThat(pollState.markSeenBatch(id, java.util.List.of("recent-item")))
+                .doesNotContain("recent-item");
     }
 }

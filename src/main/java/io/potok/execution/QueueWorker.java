@@ -52,15 +52,17 @@ public class QueueWorker implements SmartLifecycle {
                     .start(this::pollLoop);
             workers.add(worker);
         }
-        log.info("queue_workers_started count={} pollInterval={} lockTimeout={}",
-                properties.workers(), properties.pollInterval(), properties.lockTimeout());
+        log.info("queue_workers_started count={} pollInterval={} idlePollCap={} lockTimeout={}",
+                properties.workers(), properties.pollInterval(), properties.idlePollCap(), properties.lockTimeout());
     }
 
     private void pollLoop() {
+        IdleBackoff backoff = new IdleBackoff(properties.pollInterval(), properties.idlePollCap());
         while (running) {
             try {
                 Optional<QueuedJob> job = jobQueue.pollAndLock(properties.lockTimeout());
                 if (job.isPresent()) {
+                    backoff.reset();
                     inFlight.put(Thread.currentThread(), job.get());
                     try {
                         processor.process(job.get());
@@ -68,12 +70,12 @@ public class QueueWorker implements SmartLifecycle {
                         inFlight.remove(Thread.currentThread());
                     }
                 } else {
-                    LockSupport.parkNanos(properties.pollInterval().toNanos());
+                    LockSupport.parkNanos(backoff.nextDelay().toNanos());
                 }
             } catch (Exception e) {
                 // Never let a poison job kill the worker; its lease will expire and it will retry.
                 log.error("worker_iteration_failed", e);
-                LockSupport.parkNanos(properties.pollInterval().toNanos());
+                LockSupport.parkNanos(backoff.nextDelay().toNanos());
             }
         }
     }

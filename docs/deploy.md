@@ -161,3 +161,12 @@ email step fails gracefully. The Settings page shows the active source and a
   a minute boundary could double-fire; keep NTP on. The free tier is one
   instance anyway.
 - **Disk**: none needed; the app is stateless, state lives in Postgres.
+- **Resource diet (M14) — defaults are tuned for free tiers**: queue workers
+  poll every `PT10S` and back off to `PT30S` when idle (`POTOK_QUEUE_POLL_INTERVAL`
+  / `POTOK_QUEUE_IDLE_POLL_CAP`); the trigger-schedule re-read timer runs every
+  `PT5M` (`POTOK_CRON_REFRESH_INTERVAL` — dashboard/API changes still apply
+  instantly via in-process events); new poll/rss workflows need `interval >= 15m`
+  (`POTOK_MIN_POLL_INTERVAL`); poll/rss fetches are conditional (ETag /
+  Last-Modified, 304 = no body, no writes) and quiet ticks never write
+  `poll_state`. Lowering these below the defaults burns Neon compute and
+  network transfer for no benefit.

@@ -1,8 +1,20 @@
 # Handoff
 
-_Last updated: 2026-08-04 (git/deploy flow written up in CLAUDE.md)._
+_Last updated: 2026-08-18 (M14 resource diet)._
 
 ## Current state
+
+- **M14 done — resource diet (DB network transfer + compute)** (2026-08-18, branch `feat/m14-resource-diet`, from `docs/audit-resource-20260818.md` — local file, audits stay untracked):
+  - **Idle queue backoff.** `POTOK_QUEUE_POLL_INTERVAL` default `PT1S`→`PT10S`; new `POTOK_QUEUE_IDLE_POLL_CAP` (`PT30S`): each empty poll doubles the sleep from base up to the cap, any claimed job resets to base (`execution/IdleBackoff`, per-worker). Worst-case pickup latency for a job enqueued while idle = one cap (30s) — acceptable for reminder/watcher workloads. **Idle claim statements: was 2×86 400 ≈ 172k/day, now 2×2 880 ≈ 5.8k/day (−97%).** Tests: `IdleBackoffTest` (doubling, cap, reset, cap<base clamp); suite overrides cap to `PT0.2S` (IntegrationTestBase + RestartSurvival args).
+  - **poll_state writes only on change.** `PollerService.pollHttp` reads state first and upserts only when hash/condition/ETag/Last-Modified actually moved (or baseline); rss writes only on baseline/validator change (the per-tick `touch()` is gone, `hasPolledBefore` folded into the state read). A quiet workflow reads but never writes after baseline. Test: `ResourceDietIntegrationTest.unchangedTicksWriteNothingAfterBaseline` (last_polled_at frozen across ≥4 quiet ticks, moves on real change).
+  - **Conditional fetch (outbound bandwidth).** `poll_state` gains `etag`/`last_modified` (Flyway **V17**); poll http merges `If-None-Match`/`If-Modified-Since` into the fetch (never clobbering user headers), rss sends them on its own request; **304 → no body, no evaluation, no fire, no state write**; servers without validators keep full fetches (backward compat). Tests: `conditionalGetSkipsBodyAndWritesOn304` (WireMock verifies the If-None-Match header actually goes out; 304 ticks frozen; new ETag+value → exactly 1 fire, etag stored), rss variant in `rssBatchesDedupeAndHonors304`.
+  - **rss_seen batched.** `PollStateRepository.markSeenBatch` — one multi-VALUES `insert … on conflict do nothing returning item_id` per tick instead of one insert per feed item; returned ids = the new items to fire. 20-item feed: 1 round-trip, was 20. Dedupe semantics unchanged (Retention test updated to the batch API).
+  - **Cron refresh 5m.** `POTOK_CRON_REFRESH_INTERVAL` default `PT30S`→`PT5M`. The 2×`select *`-all-enabled rescan (≈50–60 MB/day of unchanged YAML re-reads at 30s) is now a safety net for external DB edits only — create/update/enable/disable still apply instantly via the existing `WorkflowsChangedEvent` AFTER_COMMIT listeners (both schedulers; integration tests already ran with refresh=1h relying on events, so this path is well-covered).
+  - **Min poll interval 15m.** `POTOK_MIN_POLL_INTERVAL` default `PT30S`→`PT15M` (create/update-time only; stored workflows untouched). Gallery aligned: availability-watcher default 10m→15m (manifest + regenerated example), interval hints/examples in templates.json, reference.json, README sample, use-cases.md bumped to ≥15m.
+  - **Dashboard chatter.** `api_token.last_used_at` stamped at most once per minute per token (`ApiTokenRepository.useActiveToken`: validate = 1 read; write only when the stamp is stale — kills the WAL write per authenticated request; test `AuthIntegrationTest.lastUsedStampIsThrottledNotPerRequest`). UI auto-refresh 7s→15s and fully paused while `document.hidden` (immediate repaint on tab return). The list-page last-run N+1 left as-is (batch endpoint would change semantics; still flagged in Known issues).
+  - **Static leak.** `examples/my-coin.yaml` (personal file, publicly served at `/help/examples/`) deleted; no manifest/test references existed.
+  - **Backward-compat:** all changes are defaults/env-tunable or write-elision; existing stored workflows run unchanged (min-interval is create-time only); conditional GET degrades to full fetch; V17 is additive columns.
+  - Docs: README config table (queue base+cap, cron refresh, min poll, conditional-fetch note, 15s UI poll), deploy.md "Resource diet" bullet in the free-tier notes.
 
 - **Git/deploy flow documented** (2026-08-04, branch `docs/git-deploy-flow`, squash `c71202f`, 337 tests):
   `CLAUDE.md` now carries the authoritative flow, extending the owner-approved policy from `110a53e`.
@@ -267,7 +279,22 @@ _Last updated: 2026-08-04 (git/deploy flow written up in CLAUDE.md)._
 
 Then: **First deploy to Koyeb + Neon per docs/deploy.md — manual, by owner** (accounts, secrets, clicking). Set `POTOK_API_KEY`; create per-client tokens after boot; use `hmac_secret_env` for public webhooks.
 
-## M14 — refactor candidates (deferred; M13 shipped the behavior fixes)
+## M15 — deferred from the M14 resource audit
+
+- **TelegramPollLock holds a dedicated pooled connection forever** (session
+  advisory lock) — one of 10 default Hikari connections is permanently busy and
+  the standing connection alone keeps Neon from autosuspending. Deferred: any
+  fix (acquire/release per getUpdates cycle, or a separate 1-connection
+  datasource outside the pool) risks breaking the single-consumer guarantee —
+  needs its own careful milestone.
+- Token scoping for `/api/tokens` (today any active token can mint/revoke
+  tokens; only `/api/admin/purge` is root-only).
+- Approval links put the one-time credential in the URL path (reverse-proxy /
+  browser-history exposure; mitigated by single-use + expiry).
+- Dashboard list-page last-run N+1 (one `GET /api/executions?size=1` per
+  workflow per refresh) — needs a batch "latest per workflow" endpoint.
+
+## M15+ — refactor candidates (deferred; M13 shipped the behavior fixes)
 
 The audit's internal-quality findings, explicitly out of M12 scope (behavior-correct today, worth a dedicated refactor milestone):
 

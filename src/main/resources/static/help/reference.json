@@ -12,7 +12,7 @@
     },
     {
       "name": "poll",
-      "syntax": "poll: { interval: 5m, http: {method, url, headers}, extract: {jsonpath|css}, fire_when: \"changed\" | expression }",
+      "syntax": "poll: { interval: 15m, http: {method, url, headers}, extract: {jsonpath|css}, fire_when: \"changed\" | expression }",
       "notes": "first poll runs immediately, then every interval; \"changed\" compares the (extracted) value hash; expressions fire on false→true edges"
     },
     {

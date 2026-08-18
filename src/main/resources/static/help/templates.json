@@ -154,8 +154,8 @@
         "type": "duration",
         "required": true,
         "default": "1h",
-        "example": "10m",
-        "help": "e.g. 30s, 10m, 1h"
+        "example": "15m",
+        "help": "e.g. 15m, 1h"
       },
       {
         "key": "chat",
@@ -225,8 +225,8 @@
         "type": "duration",
         "required": true,
         "default": "1h",
-        "example": "10m",
-        "help": "e.g. 30s, 10m, 1h"
+        "example": "15m",
+        "help": "e.g. 15m, 1h"
       },
       {
         "key": "to",
@@ -315,8 +315,8 @@
         "type": "duration",
         "required": true,
         "default": "1h",
-        "example": "10m",
-        "help": "e.g. 30s, 10m, 1h"
+        "example": "15m",
+        "help": "e.g. 15m, 1h"
       },
       {
         "key": "to",
@@ -452,7 +452,7 @@
         "required": true,
         "default": "30m",
         "example": "1h",
-        "help": "e.g. 10m, 1h"
+        "help": "e.g. 30m, 1h"
       },
       {
         "key": "chat",
@@ -509,7 +509,7 @@
         "required": true,
         "default": "30m",
         "example": "1h",
-        "help": "e.g. 10m, 1h"
+        "help": "e.g. 30m, 1h"
       },
       {
         "key": "chat",
@@ -721,9 +721,9 @@
         "label": "Check every",
         "type": "duration",
         "required": true,
-        "default": "10m",
+        "default": "15m",
         "example": "30m",
-        "help": "e.g. 30s, 10m, 1h"
+        "help": "e.g. 15m, 1h"
       },
       {
         "key": "chat",

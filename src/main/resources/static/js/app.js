@@ -1,10 +1,11 @@
-// Hash router + auto-refresh (simple polling, 7s on the open view).
+// Hash router + auto-refresh (simple polling, 15s on the open view; paused
+// entirely while the tab is hidden — a background tab must not generate load).
 // Editor views never auto-refresh — that would eat unsaved typing.
 import { initAuth } from './api.js';
 import { workflowList, workflowDetail, executionDetail, dlqList, refreshDlqBadge, editorView, tokensView, recipientsView, refreshRecipientsBadge, settingsView } from './views.js';
 import { helpView } from './help.js';
 
-const REFRESH_MS = 7000;
+const REFRESH_MS = 15000;
 let refreshTimer = null;
 
 function resolve(hash) {
@@ -38,6 +39,7 @@ function route() {
     clearInterval(refreshTimer);
     if (target.refresh) {
         refreshTimer = setInterval(() => {
+            if (document.hidden) return; // hidden tab: no requests, no DB load
             target.render().catch(() => { /* keep last view on transient errors */ });
             refreshDlqBadge();
             refreshRecipientsBadge();
@@ -46,6 +48,10 @@ function route() {
 }
 
 window.addEventListener('hashchange', route);
+// Coming back to a hidden tab: repaint immediately instead of waiting a tick.
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) route();
+});
 
 await initAuth();
 route();

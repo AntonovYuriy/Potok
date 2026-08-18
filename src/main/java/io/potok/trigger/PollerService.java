@@ -28,12 +28,19 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * One poll tick for a workflow. State updates and execution starts share a
  * transaction, so a fire is recorded if and only if the execution exists —
  * no double-firing across restarts.
+ *
+ * Resource diet (M14): ticks send If-None-Match / If-Modified-Since from the
+ * stored validators and treat 304 as "no change" (no body download, no fire,
+ * no state write); an unchanged 200 response also skips the poll_state write,
+ * so a quiet workflow reads but never writes after its baseline.
  */
 @Service
 public class PollerService {
@@ -72,8 +79,11 @@ public class PollerService {
             return; // another replica is polling this workflow right now
         }
         WorkflowDefinition.Poll poll = workflow.definition().trigger().poll();
+        PollStateRepository.PollState previous = state.find(workflow.id()).orElse(null);
+
         Map<String, Object> with = new HashMap<>(poll.http());
         with.put("fail_on_status", false); // any response is data for the poller
+        addConditionalHeaders(with, previous);
         StepResult result = http.execute(new StepContext(
                 workflow.id(), UUID.randomUUID(), workflow.name(), "poll", with, 1));
         if (!result.success()) {
@@ -83,10 +93,18 @@ public class PollerService {
 
         Map<String, Object> response = result.output();
 
+        int status = response.get("status") instanceof Number n ? n.intValue() : 0;
+
+        // Conditional GET hit: the target confirmed nothing changed since the stored
+        // validators — no body was transferred, nothing to evaluate, nothing to write.
+        if (status == 304) {
+            log.info("poll_skipped_not_modified workflow={}", workflow.name());
+            return;
+        }
+
         // A non-2xx response is a failed fetch (rate-limit 418, 5xx, …), not data:
         // fail_on_status is off so the poller can read it, but we must not treat an
         // error page as a value. Skip the tick, keep the last good state, no fire.
-        int status = response.get("status") instanceof Number n ? n.intValue() : 0;
         if (status < 200 || status >= 300) {
             log.info("poll_skipped_status workflow={} status={}", workflow.name(), status);
             return;
@@ -118,7 +136,6 @@ public class PollerService {
         context.put("poll", pollView);
 
         String newHash = sha256(hashBasis);
-        PollStateRepository.PollState previous = state.find(workflow.id()).orElse(null);
 
         PollEvaluator.Decision decision;
         if ("changed".equals(poll.fireWhen())) {
@@ -129,7 +146,17 @@ public class PollerService {
                     previous == null ? null : previous.lastCondition(), value, newHash);
         }
 
-        state.upsert(workflow.id(), decision.newHash(), decision.newCondition());
+        String etag = headerValue(response, "etag");
+        String lastModified = headerValue(response, "last-modified");
+        // Write state only when something actually changed (or on the baseline);
+        // a quiet tick with an identical value must not generate WAL traffic.
+        if (previous == null
+                || !Objects.equals(previous.lastHash(), decision.newHash())
+                || !Objects.equals(previous.lastCondition(), decision.newCondition())
+                || !Objects.equals(previous.etag(), etag)
+                || !Objects.equals(previous.lastModified(), lastModified)) {
+            state.upsert(workflow.id(), decision.newHash(), decision.newCondition(), etag, lastModified);
+        }
         if (decision.fire()) {
             Map<String, Object> payload = new LinkedHashMap<>(response);
             if (poll.extract() != null) {
@@ -150,19 +177,34 @@ public class PollerService {
             return; // another replica is polling this workflow right now
         }
         WorkflowDefinition.Rss rss = workflow.definition().trigger().rss();
+        PollStateRepository.PollState previous = state.find(workflow.id()).orElse(null);
         SyndFeed feed;
+        String etag;
+        String lastModified;
         try {
             // Same SSRF guard the http action and preview enforce: refuse a feed URL
             // that resolves to a private/internal/metadata address (honors POTOK_ALLOW_PRIVATE_URLS).
             urlGuard.check(rss.url());
+            HttpRequest.Builder request = HttpRequest.newBuilder().uri(URI.create(rss.url()))
+                    .timeout(Duration.ofSeconds(30)).GET();
+            if (previous != null && previous.etag() != null) {
+                request.header("If-None-Match", previous.etag());
+            }
+            if (previous != null && previous.lastModified() != null) {
+                request.header("If-Modified-Since", previous.lastModified());
+            }
             HttpResponse<byte[]> response = rssClient.send(
-                    HttpRequest.newBuilder().uri(URI.create(rss.url()))
-                            .timeout(Duration.ofSeconds(30)).GET().build(),
-                    HttpResponse.BodyHandlers.ofByteArray());
+                    request.build(), HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() == 304) {
+                log.info("rss_poll_not_modified workflow={}", workflow.name());
+                return; // feed unchanged: no body, no parse, no writes
+            }
             if (response.statusCode() != 200) {
                 log.warn("rss_poll_failed workflow={} status={}", workflow.name(), response.statusCode());
                 return;
             }
+            etag = response.headers().firstValue("etag").orElse(null);
+            lastModified = response.headers().firstValue("last-modified").orElse(null);
             byte[] body = io.potok.common.HttpBodyDecoder.decode(
                     response.headers().firstValue("content-encoding").orElse(null), response.body());
             feed = new SyndFeedInput().build(new XmlReader(new java.io.ByteArrayInputStream(body)));
@@ -178,15 +220,19 @@ public class PollerService {
         }
 
         // first poll: baseline only — existing items are marked seen without firing
-        boolean baseline = !state.hasPolledBefore(workflow.id());
+        boolean baseline = previous == null;
+        Map<String, SyndEntry> entriesById = new LinkedHashMap<>();
         for (SyndEntry entry : feed.getEntries()) {
             String itemId = entry.getUri() != null && !entry.getUri().isBlank()
                     ? entry.getUri() : entry.getLink();
-            if (itemId == null || itemId.isBlank()) {
-                continue;
+            if (itemId != null && !itemId.isBlank()) {
+                entriesById.putIfAbsent(itemId, entry);
             }
-            boolean isNew = state.markSeen(workflow.id(), itemId);
-            if (isNew && !baseline) {
+        }
+        Set<String> newIds = state.markSeenBatch(workflow.id(), entriesById.keySet());
+        if (!baseline) {
+            for (String itemId : newIds) {
+                SyndEntry entry = entriesById.get(itemId);
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("title", entry.getTitle());
                 item.put("link", entry.getLink());
@@ -200,7 +246,43 @@ public class PollerService {
                 log.info("rss_fired workflow={} item={}", workflow.name(), itemId);
             }
         }
-        state.touch(workflow.id());
+        // The state row is the "has polled before" marker AND the validator store;
+        // write it on the baseline or when the validators moved, never on a quiet tick.
+        if (baseline
+                || !Objects.equals(previous.etag(), etag)
+                || !Objects.equals(previous.lastModified(), lastModified)) {
+            state.upsert(workflow.id(), null, null, etag, lastModified);
+        }
+    }
+
+    /** Merge our conditional-GET validators into the fetch without clobbering user headers. */
+    private static void addConditionalHeaders(Map<String, Object> with, PollStateRepository.PollState previous) {
+        if (previous == null || (previous.etag() == null && previous.lastModified() == null)) {
+            return;
+        }
+        Map<String, Object> headers = new LinkedHashMap<>();
+        if (with.get("headers") instanceof Map<?, ?> existing) {
+            existing.forEach((k, v) -> headers.put(String.valueOf(k), v));
+        }
+        if (previous.etag() != null) {
+            headers.putIfAbsent("If-None-Match", previous.etag());
+        }
+        if (previous.lastModified() != null) {
+            headers.putIfAbsent("If-Modified-Since", previous.lastModified());
+        }
+        with.put("headers", headers);
+    }
+
+    private static String headerValue(Map<String, Object> response, String name) {
+        if (!(response.get("headers") instanceof Map<?, ?> headers)) {
+            return null;
+        }
+        for (Map.Entry<?, ?> entry : headers.entrySet()) {
+            if (name.equalsIgnoreCase(String.valueOf(entry.getKey())) && entry.getValue() != null) {
+                return String.valueOf(entry.getValue());
+            }
+        }
+        return null;
     }
 
     private static String sha256(String text) {

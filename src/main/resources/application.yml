@@ -43,14 +43,15 @@ potok:
   public-url: ${POTOK_PUBLIC_URL:http://localhost:8080}
   queue:
     workers: ${POTOK_QUEUE_WORKERS:2}
-    poll-interval: ${POTOK_QUEUE_POLL_INTERVAL:PT1S}
+    poll-interval: ${POTOK_QUEUE_POLL_INTERVAL:PT10S}
+    idle-poll-cap: ${POTOK_QUEUE_IDLE_POLL_CAP:PT30S}
     lock-timeout: ${POTOK_QUEUE_LOCK_TIMEOUT:PT60S}
     retry-base-delay: ${POTOK_QUEUE_RETRY_BASE_DELAY:PT10S}
     retry-max-delay: ${POTOK_QUEUE_RETRY_MAX_DELAY:PT10M}
     default-max-attempts: ${POTOK_QUEUE_DEFAULT_MAX_ATTEMPTS:3}
     shutdown-grace: ${POTOK_SHUTDOWN_GRACE:PT20S}
   cron:
-    refresh-interval: ${POTOK_CRON_REFRESH_INTERVAL:PT30S}
+    refresh-interval: ${POTOK_CRON_REFRESH_INTERVAL:PT5M}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     poll-updates: ${POTOK_TELEGRAM_POLL_UPDATES:true}
@@ -70,5 +71,5 @@ potok:
   retention:
     days: ${POTOK_RETENTION_DAYS:30}
   limits:
-    min-poll-interval: ${POTOK_MIN_POLL_INTERVAL:PT30S}
+    min-poll-interval: ${POTOK_MIN_POLL_INTERVAL:PT15M}
     max-wait: ${POTOK_MAX_WAIT:P365D}

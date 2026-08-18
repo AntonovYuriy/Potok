@@ -20,7 +20,7 @@ import java.util.Set;
 public class YamlDefinitionParser {
 
     /** Self-DoS guards: pollers this fast hammer the target AND the free-tier DB. */
-    private static final java.time.Duration DEFAULT_MIN_POLL_INTERVAL = java.time.Duration.ofSeconds(30);
+    private static final java.time.Duration DEFAULT_MIN_POLL_INTERVAL = java.time.Duration.ofMinutes(15);
     /** A fat-fingered {@code wait: 9999d} would park an execution for decades. */
     private static final java.time.Duration DEFAULT_MAX_WAIT = java.time.Duration.ofDays(365);
 
@@ -36,7 +36,7 @@ public class YamlDefinitionParser {
     public YamlDefinitionParser(
             TemplateResolver conditionValidator,
             @org.springframework.beans.factory.annotation.Value(
-                    "${potok.limits.min-poll-interval:PT30S}") java.time.Duration minPollInterval,
+                    "${potok.limits.min-poll-interval:PT15M}") java.time.Duration minPollInterval,
             @org.springframework.beans.factory.annotation.Value(
                     "${potok.limits.max-wait:P365D}") java.time.Duration maxWait) {
         this.conditionValidator = conditionValidator;

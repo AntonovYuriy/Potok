@@ -3,13 +3,16 @@ package io.potok.trigger;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Repository
 public class PollStateRepository {
 
-    public record PollState(String lastHash, Boolean lastCondition) {
+    public record PollState(String lastHash, Boolean lastCondition, String etag, String lastModified) {
     }
 
     private final JdbcClient jdbc;
@@ -19,48 +22,62 @@ public class PollStateRepository {
     }
 
     public Optional<PollState> find(UUID workflowId) {
-        return jdbc.sql("select last_hash, last_condition from poll_state where workflow_id = :id")
+        return jdbc.sql("""
+                        select last_hash, last_condition, etag, last_modified
+                        from poll_state where workflow_id = :id
+                        """)
                 .param("id", workflowId)
                 .query((rs, n) -> new PollState(
                         rs.getString("last_hash"),
-                        rs.getObject("last_condition", Boolean.class)))
+                        rs.getObject("last_condition", Boolean.class),
+                        rs.getString("etag"),
+                        rs.getString("last_modified")))
                 .optional();
     }
 
-    public void upsert(UUID workflowId, String hash, Boolean condition) {
+    public void upsert(UUID workflowId, String hash, Boolean condition, String etag, String lastModified) {
         jdbc.sql("""
-                        insert into poll_state (workflow_id, last_hash, last_condition, last_polled_at)
-                        values (:id, :hash, :condition, now())
+                        insert into poll_state (workflow_id, last_hash, last_condition, etag, last_modified, last_polled_at)
+                        values (:id, :hash, :condition, :etag, :lastModified, now())
                         on conflict (workflow_id) do update
-                        set last_hash = :hash, last_condition = :condition, last_polled_at = now()
+                        set last_hash = :hash, last_condition = :condition,
+                            etag = :etag, last_modified = :lastModified, last_polled_at = now()
                         """)
                 .param("id", workflowId)
                 .param("hash", hash)
                 .param("condition", condition)
+                .param("etag", etag)
+                .param("lastModified", lastModified)
                 .update();
     }
 
-    /** @return true if this item was not seen before (caller should fire) */
-    public boolean markSeen(UUID workflowId, String itemId) {
-        return jdbc.sql("""
-                        insert into rss_seen (workflow_id, item_id)
-                        values (:id, :itemId)
-                        on conflict do nothing
-                        """)
-                .param("id", workflowId)
-                .param("itemId", itemId)
-                .update() > 0;
+    /**
+     * Marks every item as seen in ONE statement and returns the ids that were
+     * not seen before (the caller fires for those). Replaces the per-item
+     * insert loop — a 20-item feed is 1 round-trip instead of 20.
+     */
+    public Set<String> markSeenBatch(UUID workflowId, Collection<String> itemIds) {
+        if (itemIds.isEmpty()) {
+            return Set.of();
+        }
+        var spec = jdbc.sql(buildBatchSql(itemIds.size()));
+        spec = spec.param("id", workflowId);
+        int i = 0;
+        for (String itemId : itemIds) {
+            spec = spec.param("item" + i++, itemId);
+        }
+        return new LinkedHashSet<>(spec.query(String.class).list());
     }
 
-    /** First-poll marker for rss: any state row means we have polled before. */
-    public boolean hasPolledBefore(UUID workflowId) {
-        return jdbc.sql("select count(*) from poll_state where workflow_id = :id")
-                .param("id", workflowId)
-                .query(Long.class)
-                .single() > 0;
+    private static String buildBatchSql(int count) {
+        StringBuilder sql = new StringBuilder("insert into rss_seen (workflow_id, item_id) values ");
+        for (int i = 0; i < count; i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append("(:id, :item").append(i).append(')');
+        }
+        return sql.append(" on conflict do nothing returning item_id").toString();
     }
 
-    public void touch(UUID workflowId) {
-        upsert(workflowId, null, null);
-    }
 }

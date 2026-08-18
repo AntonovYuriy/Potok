@@ -108,11 +108,14 @@ trigger:                           # exactly one of cron | webhook | poll | rss
   #   path: "gh-events"            # → POST /hooks/gh-events
   #   hmac_secret_env: "GH_SECRET" # optional: require X-Hub-Signature-256 (see Security)
   # poll:                           # first poll runs immediately, then every interval
-  #   interval: 5m
+  #   interval: 15m                 # minimum 15m (POTOK_MIN_POLL_INTERVAL)
   #   http: { method: GET, url: "https://shop.example/api/item/42" }
   #   extract: { jsonpath: "$.price" }    # or { css: "span.price" } for HTML
   #   fire_when: "{{ poll.value < 100 }}" # expression (edge-triggered) or "changed"
-  # rss: { interval: 15m, url: "https://hnrss.org/frontpage" }
+  # rss: { interval: 30m, url: "https://hnrss.org/frontpage" }
+  # poll/rss fetches are conditional: the poller remembers ETag/Last-Modified and
+  # sends If-None-Match / If-Modified-Since; a 304 skips the body, the evaluation
+  # and all state writes. Servers without validator support get a normal full fetch.
 
 steps:                             # a DAG; without `needs` steps run in file order
   - name: fetch
@@ -234,7 +237,7 @@ build step, no CDN. Workflow list and detail, **YAML editor** with inline
 validation errors, **version history with rollback**, execution step timeline
 (durations, attempts, errors, outputs), DLQ ops, **API tokens** page.
 Auth-aware: `/api/meta` (public) tells the UI whether to prompt for a key.
-Open views poll every 7s.
+Open views poll every 15s and pause entirely while the tab is hidden.
 
 **Preview — "what would happen right now".** Both the template form and the
 YAML editor have a *Preview ▶* button: the workflow runs once, synchronously,
@@ -427,14 +430,15 @@ they cannot drift.
 | `SMTP_FROM` | = username | sender address (Gmail requires it to match the account) |
 | `SMTP_STARTTLS` / `SMTP_AUTH` | `true` / `true` | SMTP transport toggles |
 | `POTOK_QUEUE_WORKERS` | `2` | concurrent workers (virtual threads) |
-| `POTOK_QUEUE_POLL_INTERVAL` | `PT1S` | queue poll cadence for workers |
+| `POTOK_QUEUE_POLL_INTERVAL` | `PT10S` | queue poll cadence while jobs are flowing (base of the idle backoff) |
+| `POTOK_QUEUE_IDLE_POLL_CAP` | `PT30S` | empty polls back off from the base up to this cap; work resets to base. Worst-case pickup latency for a job enqueued while idle = one cap |
 | `POTOK_QUEUE_LOCK_TIMEOUT` | `PT60S` | job lease; crash recovery horizon |
 | `POTOK_QUEUE_RETRY_BASE_DELAY` / `_MAX_DELAY` | `PT10S` / `PT10M` | backoff shape |
 | `POTOK_QUEUE_DEFAULT_MAX_ATTEMPTS` | `3` | default per-step attempts |
 | `POTOK_SHUTDOWN_GRACE` | `PT20S` | in-flight budget on SIGTERM, then lease release |
-| `POTOK_CRON_REFRESH_INTERVAL` | `PT30S` | trigger schedules re-read |
+| `POTOK_CRON_REFRESH_INTERVAL` | `PT5M` | periodic trigger-schedule re-read (safety net — create/update/enable/disable apply immediately via in-process events; the timer only catches external DB edits) |
 | `POTOK_RETENTION_DAYS` | `30` | nightly purge of finished executions and old `rss_seen` dedupe rows |
-| `POTOK_MIN_POLL_INTERVAL` | `PT30S` | reject poll/rss intervals below this at create (self-DoS guard) |
+| `POTOK_MIN_POLL_INTERVAL` | `PT15M` | reject poll/rss intervals below this at create (self-DoS guard; existing stored workflows are untouched) |
 | `POTOK_MAX_WAIT` | `P365D` | reject `wait:` durations above this at create (typo guard) |
 | `POTOK_DLQ_TELEGRAM` | `false` | DLQ Telegram alerts |
 | `POTOK_DLQ_NOTIFY_INTERVAL` | `PT1M` | rate limit for DLQ Telegram alerts |

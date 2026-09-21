@@ -78,10 +78,13 @@ log with the failing step in it. Zero log plus fetch timeouts is the
 infrastructure, not the code.
 
 **Fix.** Wait for the server to come back (`/api/v1/version` answering in
-well under a second is a good signal), then re-run the job. If this becomes
-regular rather than occasional, raise `runner.fetch_timeout` in
-`~/.gitea-runner/config.yaml` — 5s is the default and it is tight for a
-loaded host.
+well under a second is a good signal), then re-run the job.
+
+**Already done, 2026-09-21.** `runner.fetch_timeout` in
+`~/.gitea-runner/config.yaml` was raised from the 5s default to 30s, which is
+what produced these failures in the first place. If they recur anyway, the
+server is not merely slow — look at what is eating it rather than raising the
+timeout again.
 
 ---
 

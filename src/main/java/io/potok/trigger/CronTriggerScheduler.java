@@ -3,7 +3,6 @@ package io.potok.trigger;
 import io.potok.definition.Workflow;
 import io.potok.definition.WorkflowRepository;
 import io.potok.definition.YamlDefinitionParser;
-import io.potok.execution.ExecutionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.TaskScheduler;

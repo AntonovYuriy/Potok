@@ -17,10 +17,13 @@ Updated: 2026-09-21, commit — see `git log -1`.
 
 ## Decided, not yet an ADR
 
-- **`lint` is a stub.** The build declares no spotless and no checkstyle, so
-  there is nothing to run. Faking the target with a command that checks
-  nothing would be worse than admitting the gap. Wiring a linter in edits
-  `build.gradle.kts` and is a task of its own.
+- **`lint` checks defects, not formatting.** Spotless runs
+  `removeUnusedImports`, `trimTrailingWhitespace` and `endWithNewline` in check
+  mode. A full formatter is deliberately absent: `googleJavaFormat` disagrees
+  with 159 of 161 files and `palantirJavaFormat` with 150, because the project
+  indents with four spaces and both want their own. Adopting one means
+  reformatting the tree in a single unreviewable diff — a separate task, and
+  the owner's call, not a side effect of turning the linter on.
 - **`test-integration` is a stub.** `src/test` carries no `@Tag`, so the
   Testcontainers cases cannot be addressed separately; they run inside
   `test`. Splitting them edits test sources — also its own task.

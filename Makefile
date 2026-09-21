@@ -8,11 +8,10 @@ BASE_URL ?= http://localhost:$(PORT)
 ci-setup:
 	./gradlew --version
 
-# No linter exists in this project: build.gradle.kts declares neither spotless
-# nor checkstyle. Declared as a stub instead of faked with a command that
-# checks nothing; wiring a linter in changes the build and is its own task.
+# Check mode only. spotlessApply is the mutating half and is never what the
+# gate runs: a check that rewrites the files it inspects is not a check.
 lint:
-	@echo "n/a"
+	./gradlew spotlessCheck
 
 typecheck:
 	./gradlew compileJava compileTestJava

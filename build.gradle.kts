@@ -9,6 +9,7 @@ plugins {
     // One retry is enough to absorb the rare collision without masking real
     // failures — maxFailures still fails the build fast on widespread breakage.
     id("org.gradle.test-retry") version "1.6.2"
+    id("com.diffplug.spotless") version "6.25.0"
 }
 
 group = "io.potok"
@@ -86,5 +87,22 @@ tasks.withType<Test> {
         maxRetries.set(1)
         maxFailures.set(10)
         failOnPassedAfterRetry.set(false)
+    }
+}
+
+spotless {
+    java {
+        target("src/**/*.java")
+        // Полный форматтер сюда пока не ставится: palantir расходится со
+        // 150 из 161 файла, и такой дифф нечитаем. Это отдельная задача.
+        // Здесь — проверки, которые ловят дефект, а не стиль отступа.
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+    kotlinGradle {
+        target("*.gradle.kts")
+        trimTrailingWhitespace()
+        endWithNewline()
     }
 }

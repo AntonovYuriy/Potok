@@ -1,0 +1,7 @@
+# Known false positives. Everything listed here has been read by hand and is a
+# documentation placeholder, not a credential. A scanner that always reports
+# the same two findings teaches everyone to ignore it.
+#
+# .claude/skills/ecc/api-design/SKILL.md: the literal `sk_live_abc123` in an
+# example request showing what an API-key header looks like.
+.claude/skills/ecc/api-design/SKILL.md:generic-api-key:306

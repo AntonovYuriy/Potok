@@ -1,172 +1,34 @@
-# Deploying Potok (free tier): Koyeb + Neon
+# Deploying Potok
 
-Goal: Potok running 24/7 for $0 — app on a [Koyeb](https://www.koyeb.com) free
-instance from the GHCR image, database on [Neon](https://neon.tech) free Postgres.
+## The deployment that runs
 
-## 1. Database — Neon
+Potok runs on the home server as a compose stack, deployed by a Gitea webhook
+on merge to `main`. The mechanism — the webhook, `deploy.sh`, the shared
+`deploy-template.sh`, its health check, rollback and log — belongs to the
+infrastructure repository (`server-infra`), and lives there rather than being
+restated here: a second copy stops matching the first the day either changes.
 
-1. Sign up at neon.tech → **New project** (pick a region close to your Koyeb region).
-2. In the project dashboard open **Connection details**, choose **Java** —
-   you get a JDBC URL like:
-   `jdbc:postgresql://ep-xxx-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require`
-3. Note the username and password (or create a dedicated role `potok`).
+What this repository has to hold up its end:
 
-Use the **pooled** connection string (`-pooler` host). Neon's free tier allows
-a limited number of direct connections; the pooler multiplexes them.
+- `docker-compose.yml` with a healthcheck on the app service;
+- `/actuator/health` answering `{"status":"UP"}` once the app is ready;
+- `.env` next to the compose file, mode 600, never in git.
 
-## 2. Image — GHCR
+Nothing else here triggers a deploy. Pushing to any branch other than `main`
+is safe.
 
-CI publishes on every merge to main:
+## The cloud instance
 
-```
-ghcr.io/antonovyuriy/potok:latest
-ghcr.io/antonovyuriy/potok:<commit-sha>
-```
+A second, independent instance runs on [Koyeb](https://www.koyeb.com) from the
+GHCR image with a [Neon](https://neon.tech) Postgres behind it, kept awake by an
+external `/actuator/health` ping. It is not a fallback for the home server and
+is not deployed by the webhook — it is its own thing, wired up by hand.
 
-If the package is private, create a GitHub PAT with `read:packages` for Koyeb,
-or make the package public (GitHub → Packages → potok → settings → visibility).
+Its setup guide used to live in this file. It is still in git
+(`git log --follow -- docs/deploy.md`), and the inventory of the external
+accounts it depends on is in `server-infra`.
 
-## 3. App — Koyeb
+## Configuration
 
-1. Sign up at koyeb.com → **Create Service** → **Docker image**.
-2. Image: `ghcr.io/antonovyuriy/potok:latest` (add registry credentials if private).
-3. Instance type: **Free** (0.1 vCPU / 512 MB — fits, see notes below).
-4. Port: `8000` is Koyeb's default — either set Koyeb's port to `8080`,
-   or set env `PORT=8000` and keep Koyeb's default. Pick one, keep them equal.
-5. **Health check**: HTTP, path `/actuator/health/readiness`, port as above.
-6. Environment variables:
-
-   | Name | Value |
-   |---|---|
-   | `DB_URL` | the Neon JDBC URL (with `?sslmode=require`) |
-   | `DB_USER` | Neon role |
-   | `DB_PASSWORD` | Neon password (use Koyeb **Secret** type) |
-   | `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | `5` |
-   | `POTOK_API_KEY` | long random string (Secret) — REQUIRED on a public URL, guards /api/** and the dashboard ops |
-   | `POTOK_SECRET_KEY` | base64 32-byte key (Secret) — REQUIRED only to store SMTP credentials from the dashboard; env `SMTP_*` works without it |
-   | `TELEGRAM_BOT_TOKEN` | bot token (Secret) — optional |
-   | `TELEGRAM_CHAT_ID` | default chat — optional |
-   | `POTOK_DLQ_TELEGRAM` | `true` for DLQ alerts — optional |
-   | `SMTP_HOST` | SMTP server for the email action — optional (unset = email steps fail gracefully) |
-   | `SMTP_PORT` | submission port — optional, default `587` |
-   | `SMTP_USERNAME` | SMTP login — optional |
-   | `SMTP_PASSWORD` | SMTP password / app password (Secret) — optional |
-   | `SMTP_FROM` | sender address — optional, defaults to `SMTP_USERNAME` |
-   | `SMTP_STARTTLS` | optional, default `true` |
-   | `SMTP_AUTH` | optional, default `true` |
-   | `POTOK_LOG_JSON` | `true` (Koyeb log search works better with JSON) |
-
-7. Deploy. First boot runs Flyway migrations automatically.
-
-Smoke test:
-
-```bash
-curl https://<your-app>.koyeb.app/actuator/health
-curl -H 'Content-Type: text/plain' --data-binary @examples/healthcheck.yaml \
-     https://<your-app>.koyeb.app/api/workflows
-```
-
-## Tokens & webhook signatures
-
-- After first boot, create per-client API tokens instead of sharing the root
-  key: dashboard → Tokens (or `POST /api/tokens {"name": "ci"}` with the root
-  key). The plaintext is shown once; revoke leaked tokens immediately —
-  `POTOK_API_KEY` stays your bootstrap/admin credential (only it can call
-  `POST /api/admin/purge`).
-- For public webhooks add `hmac_secret_env: "MY_HOOK_SECRET"` to the trigger
-  and set `MY_HOOK_SECRET` as a Koyeb Secret env var. GitHub webhooks: same
-  secret in the webhook settings, GitHub signs with X-Hub-Signature-256
-  automatically. Unsigned/invalid deliveries get 401.
-
-## Email channel (SMTP)
-
-Potok's `email` action is provider-agnostic — point the `SMTP_*` vars at any
-submission server. If `SMTP_HOST` is unset the action fails the step with a
-clear message (just like the telegram action without a token), so leaving it
-blank is safe.
-
-**Gmail (what the owner uses):**
-
-1. Enable 2-Step Verification on the Google account (required for app passwords).
-2. Create an **App password**: Google Account → Security → 2-Step Verification →
-   App passwords. You get a 16-character password — use it as `SMTP_PASSWORD`,
-   not your normal account password.
-3. Set:
-
-   | Var | Value |
-   |---|---|
-   | `SMTP_HOST` | `smtp.gmail.com` |
-   | `SMTP_PORT` | `587` |
-   | `SMTP_USERNAME` | your full Gmail address |
-   | `SMTP_PASSWORD` | the 16-char app password (Secret) |
-   | `SMTP_FROM` | same Gmail address (Gmail rewrites mismatched From to the account) |
-   | `SMTP_STARTTLS` | `true` |
-
-   Caveats: Gmail caps free sending at **~500 recipients/day**, and the `From`
-   must match the authenticated account.
-
-**Free alternatives** (better deliverability and higher limits for
-notifications): **Brevo** (~300 emails/day free) and **SendGrid** (~100/day
-free). Both give you an SMTP host, a username, and an API-key-as-password —
-drop them into the same `SMTP_*` vars; the engine stays provider-agnostic.
-
-### Configuring SMTP from the dashboard (encrypted at rest)
-
-Instead of env vars you can set SMTP under **Settings → Email (SMTP)** in the
-dashboard. The host/port/username/from/STARTTLS/auth are stored in Postgres; the
-**password is encrypted at rest with AES-256-GCM** and is **never shown again or
-returned by the API** (write-only).
-
-This requires a `POTOK_SECRET_KEY` — a base64-encoded 32-byte key:
-
-```bash
-openssl rand -base64 32
-```
-
-Set it as a Koyeb **Secret**. Without it, the dashboard refuses to store a
-password (clear `400: set POTOK_SECRET_KEY to store secrets`) but **env-based
-`SMTP_*` keeps working** — nothing breaks for an existing deployment. Precedence
-at send time: a complete DB config wins, else the `SMTP_*` env vars, else the
-email step fails gracefully. The Settings page shows the active source and a
-**Send test** button that connects + authenticates without sending an email.
-
-> Rotating `POTOK_SECRET_KEY` invalidates the stored password (it can't be
-> decrypted). Sending is not interrupted: on a decrypt failure Potok logs a
-> warning and automatically falls back to the `SMTP_*` env vars (or "not
-> configured" if none are set). To move back to dashboard-stored config,
-> re-enter the password under Settings → Email (SMTP) after the rotation.
-
-## Honest notes (free-tier caveats)
-
-- **RAM**: 512 MB works (`-XX:MaxRAMPercentage=75` caps the heap at ~384 MB;
-  observed RSS is ~300 MB). Don't crank `POTOK_QUEUE_WORKERS` high — each
-  in-flight http step holds buffers; 2–4 workers is the sweet spot here.
-- **Koyeb free instances sleep** after inactivity ("scale to zero" on the
-  free plan): incoming HTTP wakes the app (cold start ~15-30s, JVM + Flyway),
-  but **cron triggers do not fire while the instance sleeps** — a sleeping
-  instance runs no scheduler. If you rely on cron workflows, you need a plan
-  without scale-to-zero or an external pinger (e.g. a free uptime monitor
-  hitting /actuator/health every few minutes — that also keeps Neon warm).
-- **Neon free tier**: the database itself also suspends after ~5 min idle;
-  first query after suspend takes a few seconds — readiness may flap right
-  after a cold start. The pooled (`-pooler`) host plus
-  `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=5` keeps you inside the
-  connection limits; do NOT point multiple environments at one free project.
-- **Multi-instance**: safe at any replica count. Job execution dedupes via
-  `FOR UPDATE SKIP LOCKED`; poll/rss ticks take a per-workflow advisory lock;
-  cron fires claim a `(workflow, minute)` row (`ON CONFLICT DO NOTHING`), so a
-  schedule fires once across replicas. The Telegram `getUpdates` poller is
-  single-consumer via a session advisory lock. Caveat: the cron claim is
-  keyed on the observed minute — replicas with badly skewed clocks straddling
-  a minute boundary could double-fire; keep NTP on. The free tier is one
-  instance anyway.
-- **Disk**: none needed; the app is stateless, state lives in Postgres.
-- **Resource diet (M14) — defaults are tuned for free tiers**: queue workers
-  poll every `PT10S` and back off to `PT30S` when idle (`POTOK_QUEUE_POLL_INTERVAL`
-  / `POTOK_QUEUE_IDLE_POLL_CAP`); the trigger-schedule re-read timer runs every
-  `PT5M` (`POTOK_CRON_REFRESH_INTERVAL` — dashboard/API changes still apply
-  instantly via in-process events); new poll/rss workflows need `interval >= 15m`
-  (`POTOK_MIN_POLL_INTERVAL`); poll/rss fetches are conditional (ETag /
-  Last-Modified, 304 = no body, no writes) and quiet ticks never write
-  `poll_state`. Lowering these below the defaults burns Neon compute and
-  network transfer for no benefit.
+Every knob is an environment variable; `.env.example` is the canonical list,
+and the README explains what each one does.

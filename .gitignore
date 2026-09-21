@@ -19,3 +19,8 @@ docs/audit-*.md
 
 # Серверные правки к compose (порты, restart-политика) — только локально
 docker-compose.override.yml
+
+# .claude/ трекається: скіли, правила і процедури — частина репозиторію.
+# Локальними лишаються тільки ці: дозволи конкретної машини і кеш плагінів.
+.claude/settings.local.json
+.claude/.agents/

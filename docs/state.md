@@ -32,14 +32,16 @@ Updated: 2026-09-21, commit — see `git log -1`.
 
 ## Traps
 
-- **The GitHub mirror is instant for this project, not nightly.** Potok is
-  listed in `INSTANT_MIRROR` in `mirror/mirror-sync.sh` (server-infra), so a
-  push to Gitea `main` reaches the public GitHub repository at once. Anything
-  merged is published immediately, history included.
-- **`.github/workflows/ci.yml` is live, not an inert artifact.** On the
-  mirror it builds, tests and pushes `ghcr.io/antonovyuriy/potok` images on
-  every push to `main`. It is not the gate for this repository, but it does
-  run, and it consumes GitHub Actions minutes.
+- **Everything merged to `main` becomes public.** The mirror to the public
+  GitHub repository runs on a nightly timer in server-infra, so the delay is
+  hours, not minutes — but it is a delay, not a filter. Schedule and
+  exceptions live there; the per-mirror state is visible in Gitea's
+  push-mirror settings.
+- **`.github/workflows/ci.yml` is live, not an inert artifact.** Once the
+  mirror carries commits over, it builds, tests and pushes
+  `ghcr.io/antonovyuriy/potok` images on pushes to `main`. It is not the gate
+  for this repository, but it does run, and it consumes GitHub Actions
+  minutes.
 - **Tests need a running Docker.** Testcontainers starts a real Postgres.
 - **Editing `templates/` without `./gradlew renderExamples`** leaves
   `examples/` stale and turns the drift tests red.

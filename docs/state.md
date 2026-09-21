@@ -9,7 +9,7 @@ Updated: 2026-09-21, commit — see `git log -1`.
   `scripts/gate-retry.sh`, this file, `.claude/skills/troubleshooting.md`,
   `CLAUDE.md`. Product code, `Dockerfile` and `docker-compose.yml` are
   deliberately untouched.
-  Not finished: two gate targets are honest stubs, see below.
+  Not finished: `test-integration` is still an honest stub, see below.
 
 ## Blocked
 

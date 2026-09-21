@@ -87,10 +87,9 @@ Workflow ідентичний шаблону `server-infra/templates/gate.yml` �
   запущений Docker/colima. Пропущені тести гейт рахує і вважає **червоним**.
 - Правив `templates/` → спершу `./gradlew renderExamples`, закомітити
   згенеровані `examples/`, інакше drift-тест червоний.
-- **`lint` і `test-integration` — заглушки `n/a`.** У проєкті немає ані
-  spotless/checkstyle, ані розмітки `@Tag` на тестах; вигадувати їх і
-  посилатися на них не можна. Обидва — окремі задачі, причини в
-  `docs/state.md`.
+- **Що саме стоїть за `lint` і `test-integration` — у `Makefile`**, сюди не
+  переказуємо (кожен переказ розходиться з оригіналом). Чому вони такі —
+  `docs/state.md`, розділ «Decided, not yet an ADR».
 - Проміжні таргетовані прогони (`./gradlew test --tests '...'`) — лише під
   час розробки; фінальний гейт повний.
 

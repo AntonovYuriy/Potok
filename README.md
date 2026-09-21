@@ -1,6 +1,5 @@
 # потóк
 
-[![ci](https://github.com/AntonovYuriy/Potok/actions/workflows/ci.yml/badge.svg)](https://github.com/AntonovYuriy/Potok/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Java 21](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot 3.5](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F)
@@ -497,8 +496,11 @@ definition and version at start. History is append-only; rollback appends.
 
 ## Deploying
 
-Free-tier guide (Koyeb + Neon, from the GHCR image CI publishes):
-[docs/deploy.md](docs/deploy.md). Multi-instance: job execution is safe at any
+Free-tier guide (Koyeb + Neon, from the GHCR image): [docs/deploy.md](docs/deploy.md).
+The Koyeb instance is a frozen showcase, not a running copy of this code: image
+publishing to GHCR was switched off on 2026-08-02, so it still serves the image
+built from commit `b93e1c2` (2026-08-02) and lags behind everything merged
+since. The current version runs on the home server only. Multi-instance: job execution is safe at any
 replica count (SKIP LOCKED); trigger schedulers dedupe via advisory locks and
 cron claims — but the free tier is one instance anyway, and one instance is
 the well-trodden path.

@@ -40,11 +40,11 @@ Updated: 2026-09-21, commit — see `git log -1`.
   hours, not minutes — but it is a delay, not a filter. Schedule and
   exceptions live there; the per-mirror state is visible in Gitea's
   push-mirror settings.
-- **`.github/workflows/ci.yml` is live, not an inert artifact.** Once the
-  mirror carries commits over, it builds, tests and pushes
-  `ghcr.io/antonovyuriy/potok` images on pushes to `main`. It is not the gate
-  for this repository, but it does run, and it consumes GitHub Actions
-  minutes.
+- **`.github/workflows/ci.yml` is not a working CI.** It looks live and is
+  not: GitHub Actions is disabled on the mirror since 2026-08-02, so the
+  workflow has not run since and will not run again. It is kept as the record
+  of how the image the frozen Koyeb showcase still serves (`b93e1c2`) was
+  built. The gate for this repository is `.gitea/workflows/gate.yml`.
 - **Tests need a running Docker.** Testcontainers starts a real Postgres.
 - **Editing `templates/` without `./gradlew renderExamples`** leaves
   `examples/` stale and turns the drift tests red.

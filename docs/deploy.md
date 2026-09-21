@@ -24,6 +24,12 @@ GHCR image with a [Neon](https://neon.tech) Postgres behind it, kept awake by an
 external `/actuator/health` ping. It is not a fallback for the home server and
 is not deployed by the webhook — it is its own thing, wired up by hand.
 
+**It is frozen, and it stays frozen.** Publishing the image to GHCR was
+switched off on 2026-08-02 and is not coming back, so Koyeb keeps serving the
+image built from commit `b93e1c2` (2026-08-02) and drifts further from this
+code with every merge. Treat it as a showcase of that commit, not as a running
+copy of Potok: the current version runs on the home server only.
+
 Its setup guide used to live in this file. It is still in git
 (`git log --follow -- docs/deploy.md`), and the inventory of the external
 accounts it depends on is in `server-infra`.

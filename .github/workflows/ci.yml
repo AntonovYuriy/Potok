@@ -1,3 +1,9 @@
+# FROZEN — does not run. GitHub Actions is disabled on the mirror as of
+# 2026-08-02, and this workflow has not executed since. It is kept as the
+# record of how the ghcr.io/antonovyuriy/potok image that the Koyeb showcase
+# still serves (commit b93e1c2) was built. The gate for this repository is
+# .gitea/workflows/gate.yml.
+
 name: ci
 
 on:

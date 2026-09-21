@@ -3,8 +3,9 @@
 Self-hosted рушій сценаріїв: тригери (webhook, cron) durable виконують
 YAML-воркфлоу з дій (Telegram, HTTP, email, …) через Postgres-чергу задач.
 Орієнтир — `README.md`; правила коду, тестів і SPI дій — `CONTRIBUTING.md`
-(вони чинні, цей файл їх не дублює). Стан між сесіями — `docs/handoff.md`:
-читати першим, оновлювати перед кінцем сесії.
+(вони чинні, цей файл їх не дублює). Стан між сесіями — `docs/state.md`:
+читати першим, оновлювати перед кінцем сесії. `docs/handoff.md` — заморожений
+журнал попередніх віх; нового туди не пишемо, історія живе в `git log`.
 
 ## Стек
 
@@ -35,60 +36,59 @@ SPI-диспетчер), `action` (хендлери дій). Тести дзер
 
 **АВТОРИТЕТНО.** Замінює попередній `gh`/GitHub-Actions/PR-флоу цілком.
 
-```
-origin = ssh://git@home-server.tailf9e8b0.ts.net:2222/yuric/Potok.git   ← джерело істини (Gitea)
-github = git@github.com:AntonovYuriy/Potok.git                          ← ЛИШЕ архівне дзеркало
-```
+Адреси не переписуємо сюди — `git remote -v`. `origin` — Gitea на home-server,
+джерело істини; `github` — дзеркало. SSH ходить спільним alias'ом з авто-вибором
+LAN → Tailscale (`~/.ssh/config`, Host `acc-git`). Пушити **тільки** в `origin`,
+PR на GitHub не створювати, **`gh` CLI не використовувати взагалі**.
 
-Той самий home-server, що й інші проєкти; SSH ходить спільним alias'ом з
-авто-вибором LAN → Tailscale (`~/.ssh/config`, Host `acc-git`: LAN `192.168.2.45:2222`,
-інакше `home-server.tailf9e8b0.ts.net:2222`). Пушити **тільки** в `origin`.
-GitHub синхронізується автоматично (~22:30) — туди не пушити, PR там не
-створювати, **`gh` CLI не використовувати взагалі**. `.github/workflows/ci.yml`
-лишається у дзеркалі як артефакт — на нього не спиратися.
+**Дзеркало для Potok — миттєве, не нічне.** Проєкт стоїть у `INSTANT_MIRROR`
+(`mirror/mirror-sync.sh` у `server-infra`): push у Gitea `main` одразу
+з'являється в публічному репозиторії на GitHub. Усе, що змержено, вважається
+опублікованим тієї ж хвилини — разом з історією.
 
-## MERGE — CC робить сам, автономно після зеленого suite
+**`.github/workflows/ci.yml` — живий, а не артефакт.** На дзеркалі він
+збирає, ганяє тести і **публікує образ `ghcr.io/antonovyuriy/potok`** на кожен
+push у `main`. Гейтом цього репозиторію він не є (гейт — нижче), але він
+реально виконується. Не спиратися на нього і не чекати його.
+
+## MERGE — через PR і зелений гейт
 
 Флоу кінець-у-кінець:
 
 ```
-branch → implement → ПОВНИЙ локальний suite (green) → commit → push origin (гілка, історія)
-       → squash-merge у main + push origin main → webhook → деплой → підтвердити landing
+branch → implement → make verify (локально, зелено) → commit → push origin (гілка)
+       → PR у Gitea → зелений гейт → squash-merge → main → webhook → деплой
 ```
 
-```bash
-git checkout main && git pull --ff-only origin main
-git merge --squash <branch> && git commit -m "<type>: ..."
-git push origin main                                   # → webhook → прод-деплой
-git merge-base --is-ancestor <sha> origin/main && echo landed
-```
+`main` **під branch-protection**: прямий push відбивається pre-receive хуком,
+обов'язковий статус — `gate / gate (pull_request)`, мерж тільки **squash**,
+гілка видаляється після мержу, апрув власника не потрібен. Мерж ставиться
+через «merge when checks succeed» і відбувається сам, коли гейт позеленіє.
+Власник гальмує конкретний merge лише явно («не мерж», «батчи») — тоді CC
+зупиняється на кроці push гілки.
 
-`main` не під branch-protection — push проходить напряму, токен/`tea`/web-UI
-не потрібні. Завжди **squash**; після merge гілку прибрати. Власник гальмує
-конкретний merge лише явно («не мерж», «батчи») — тоді CC зупиняється на кроці
-push гілки.
+## ГЕЙТ — Gitea Actions, runner на маці
 
-## CI — НЕМАЄ (постійний стан)
+Склад гейта не переказуємо: читай `.gitea/workflows/gate.yml` і `Makefile`.
+Workflow ідентичний шаблону `server-infra/templates/gate.yml` і в цьому
+репозиторії не правиться — якщо здається, що він «не підходить», правиться
+`Makefile`.
 
-Gitea Actions не ввімкнено, runner не піднято. GitHub Actions — у дзеркалі,
-не гейт. Отже **ГЕЙТ перед push = ПОВНИЙ ЛОКАЛЬНИЙ SUITE**:
+Локально те саме дає `make verify` (підіймає compose, чекає health, smoke).
 
-```bash
-docker compose up -d postgres    # (опційно; тести піднімають свій PG через Testcontainers)
-./gradlew build                  # compile + увесь тест-сет — ЄДИНИЙ гейт
-```
-
-- `./gradlew build` = компіляція + `test` (59 тест-класів, 337 тестів), серед
-  них інтеграційні на **реальному Postgres через Testcontainers** (потрібен
-  запущений Docker/colima) та drift-тести `TemplatesIntegrationTest` /
-  `HelpIntegrationDocsTest` (`examples/` згенеровані з `templates/`;
-  `integration.md == connect.md`). «Зелений suite» означає саме це, не лише unit.
+- `make test` ганяє `cleanTest test` навмисно: інакше Gradle віддає
+  `:test UP-TO-DATE` і гейт зеленіє, нічого не виконавши. Кількість тестів
+  тут не дублюємо — вона у звіті прогону.
+- Тести піднімають **реальний Postgres через Testcontainers** — потрібен
+  запущений Docker/colima. Пропущені тести гейт рахує і вважає **червоним**.
 - Правив `templates/` → спершу `./gradlew renderExamples`, закомітити
   згенеровані `examples/`, інакше drift-тест червоний.
-- **Окремих lint/typecheck кроків у проєкті немає** (жодного checkstyle/spotless),
-  commitlint і scope-enum теж немає — не вигадувати їх і не посилатися на них.
-- Не посилатися на CI, не чекати CI, не re-run CI. Проміжні таргетовані прогони
-  (`./gradlew test --tests '...'`) — лише під час розробки; фінальний гейт повний.
+- **`lint` і `test-integration` — заглушки `n/a`.** У проєкті немає ані
+  spotless/checkstyle, ані розмітки `@Tag` на тестах; вигадувати їх і
+  посилатися на них не можна. Обидва — окремі задачі, причини в
+  `docs/state.md`.
+- Проміжні таргетовані прогони (`./gradlew test --tests '...'`) — лише під
+  час розробки; фінальний гейт повний.
 
 ## DEPLOY — webhook на merge у `main`
 
@@ -118,10 +118,16 @@ docker compose up -d postgres    # (опційно; тести піднімаю�
 неоднозначний scope); **red suite**, який не чиниться в межах задачі;
 merge-конфлікт; будь-яка помилка push/hook. Після STOP далі не йти.
 
-**(B) SUCCESS + MERGE** — `./gradlew build` зелений → чиста гілка → `git push -u
-origin <branch>` → squash-merge у `main` + push → підтвердити landing → доповісти:
-«гілка X, локально зелено (N тестів), змінено: …, змержено в main (`<sha>`),
+**(B) SUCCESS + MERGE** — `make verify` зелений → чиста гілка → `git push -u
+origin <branch>` → PR → зелений гейт → squash-merge → підтвердити landing →
+доповісти: «гілка X, гейт зелений, змінено: …, змержено в main (`<sha>`),
 деплой пішов».
+
+Перед (B) обов'язково, у тому самому PR:
+
+- `docs/state.md` оновлено поточним станом (не історією);
+- `.claude/skills/troubleshooting.md` доповнено, якщо щось падало і було
+  розібрано.
 
 ## Гілки та комміти
 
@@ -137,13 +143,15 @@ origin <branch>` → squash-merge у `main` + push → підтвердити la
 - ❌ `gh` CLI, push або PR на GitHub (дзеркало).
 - ❌ `git push --force` / `--force-with-lease` у `main`; переписування
   опублікованої історії (`rebase -i`, `reset --hard`, `commit --amend` після push).
-- ❌ Merge при червоному suite.
-- ❌ Секрети (`.env`, ключі, токени, реальні chat_id) у git.
-- ❌ Прямі робочі комміти в `main` повз гілку (виняток — тривіальна правка
-  `docs/handoff.md` після merge).
+- ❌ Merge при червоному гейті.
+- ❌ Секрети (`.env`, ключі, токени, реальні chat_id) у git. Дзеркало
+  миттєве — те, що потрапило в комміт, уже публічне.
+- ❌ Прямі комміти і push у `main` повз PR — branch-protection їх відбиває,
+  винятків більше немає.
 - ❌ Видалення remote-гілки `main` або чужих гілок.
 - ❌ Операції поза `~/Developer/Potok/`.
 
 > Розгорнутий операційний runbook (покроково, формат звіту, single-writer,
 > гігієна гілок) — `.claude/skills/git-workflow/SKILL.md` (локальний, у репо
-> не трекається).
+> не трекається). Виняток — `.claude/skills/troubleshooting.md`: він частина
+> контракту стандарту і трекається, решта `.claude/` лишається локальною.

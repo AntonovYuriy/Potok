@@ -1,0 +1,19 @@
+name: gate
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: mac
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: make ci-setup
+      - run: make lint
+      - run: make typecheck
+      - run: make test

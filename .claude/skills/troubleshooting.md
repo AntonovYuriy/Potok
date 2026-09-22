@@ -60,6 +60,53 @@ so the base publication survives and bypasses ufw.
 
 ---
 
+## `make verify` failed and the stack is still up, holding 18080 and 55432
+
+_2026-09-22_
+
+**Symptom.** `make: *** [verify] Error 2`, and afterwards:
+
+```
+$ docker ps
+potok-app-1       Up 27 seconds (healthy)   0.0.0.0:18080->8080/tcp
+potok-postgres-1  Up 33 seconds (healthy)   0.0.0.0:55432->5432/tcp
+```
+
+The next `verify` then fails on a port that is already taken, and the stale
+postgres volume outlives the run that made it.
+
+**What it is.** Teardown was the last line of the recipe:
+
+```make
+	$(MAKE) --no-print-directory smoke BASE_URL=...
+	$(COMPOSE_OVERRIDE) | $(COMPOSE) down
+```
+
+A failing smoke aborts make at that line, so `down` is never reached. Only the
+happy path tore anything down. The same shape cost three leaked JVMs in
+TelegramBelotCounter and a leaked listener in netspeed on the same day.
+
+**How it is caught now.** `up`, `smoke` and `down` share one block with an
+`rc`: `down -v` runs whatever happened to smoke, and the target's exit code is
+the worst of everything. After it, `scripts/stop-and-prove.sh` checks both
+published ports actually went quiet — `docker compose down` exiting 0 is not
+proof that nothing answers. If either port still replies, the target is red.
+
+Two things make this safe rather than merely tidy. `-p $(VERIFY_PROJECT)`
+gives verify its own compose project, so `down -v` can only reach what verify
+itself created — never `prahosmukach-dev`, `acc_postgres` or anything else on
+the machine. And because that project owns the only named volume, `-v` is
+allowed: the database is rebuilt per run instead of carrying yesterday's rows.
+
+The rule is `STANDARD.md` §4; `scripts/stop-and-prove.sh` is a verbatim copy of
+`server-infra/templates/stop-and-prove.sh` and is maintained there.
+
+A stack left over from an older build is cleaned with the same project name it
+was created under, never with a bare `docker rm`:
+`docker compose -p potok-verify -f docker-compose.yml down -v`.
+
+---
+
 ## Gate red with no log at all
 
 _2026-09-21_

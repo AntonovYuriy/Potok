@@ -53,3 +53,14 @@ Updated: 2026-09-21, commit — see `git log -1`.
 - **`make verify` remaps the host ports** (`18080`, `55432`) through an
   override on stdin, because 8080 and 5432 on this machine belong to other
   projects. `docker-compose.yml` itself is never edited for this.
+- **`make verify` runs in its own compose project** (`-p potok-verify`).
+  Without it the project name came from the directory, and `down` reached
+  whatever shared that name. Its own project is also what makes `down -v`
+  safe: the one named volume belongs to verify and to nothing else, so each
+  run gets a fresh database instead of yesterday's rows.
+- **Teardown in `verify` runs whatever happened, and is proved.** `up`,
+  `smoke` and `down` share one block with an `rc`; afterwards
+  `scripts/stop-and-prove.sh` checks both published ports went quiet, because
+  `docker compose down` exiting 0 is not proof that nothing answers. The rule
+  is `STANDARD.md` §4; the script is a copy of
+  `server-infra/templates/stop-and-prove.sh` and is maintained there.
